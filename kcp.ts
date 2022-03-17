@@ -21,10 +21,6 @@ export const IKCP_PROBE_INIT = 7000; // 7 secs to probe window size
 export const IKCP_PROBE_LIMIT = 120000; // up to 120 secs to probe window
 export const IKCP_SN_OFFSET = 12;
 
-export function log(...msg) {
-    console.log('[', new Date().toISOString(), ']', ...msg);
-}
-
 const refTime = Date.now();
 
 function currentMs(): number {
@@ -342,7 +338,6 @@ export class Kcp {
     }
 
     recv(buffer: Buffer): number {
-        // log('recv()');
         const peeksize = this.peekSize();
         if (peeksize < 0) {
             return -1;
@@ -402,7 +397,6 @@ export class Kcp {
     //
     // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
     input(data: Buffer, regular: boolean, ackNodelay: boolean): number {
-        // log('input()', data);
         const snd_una = this.snd_una;
         if (data.byteLength < IKCP_OVERHEAD) {
             return -1;
@@ -439,7 +433,6 @@ export class Kcp {
             sn = ikcp_decode32u(data, 12);
             una = ikcp_decode32u(data, 16);
             length = ikcp_decode32u(data, 20);
-            // console.log('decode kcp 包', { conv, cmd, frg, wnd, ts, sn, una, length, data: data.slice(IKCP_OVERHEAD, IKCP_OVERHEAD + length) });
             data = data.slice(IKCP_OVERHEAD);
             if (data.byteLength < length) {
                 return -2;
@@ -607,10 +600,8 @@ export class Kcp {
 
     // returns true if data has repeated
     private _parse_data(newseg: Segment): boolean {
-        // console.log('parse_data', { newseg, rcv_nxt: this.rcv_nxt, rcv_wnd: this.rcv_wnd });
         const sn = newseg.sn;
         if (sn >= this.rcv_nxt + this.rcv_wnd || sn < this.rcv_nxt) {
-            // console.log('fuck parse_data', { sn, rcvnxt: this.rcv_nxt, rcvwnd: this.rcv_wnd });
             return true;
         }
 
@@ -638,7 +629,6 @@ export class Kcp {
 
             this.rcv_buf.splice(insert_idx, 0, newseg);
         }
-        // console.log('插入 rcv_buf 之后', this.rcv_buf);
 
         // move available data from rcv_buf -> rcv_queue
         let count = 0;
@@ -654,7 +644,6 @@ export class Kcp {
             const segs = this.rcv_buf.splice(0, count);
             this.rcv_queue.push(...segs);
         }
-        // console.log('快速挪到 rcv_queue', this.rcv_queue);
 
         return repeat;
     }
@@ -800,7 +789,6 @@ export class Kcp {
         let minimal = 0;
 
         if (this.updated === 0) {
-            // return current;
             return 0;
         }
 
@@ -809,7 +797,6 @@ export class Kcp {
         }
 
         if (current >= ts_flush) {
-            // return current;
             return 0;
         }
 
@@ -818,7 +805,6 @@ export class Kcp {
         for (const seg of this.snd_buf) {
             const diff = seg.resendts - current;
             if (diff <= 0) {
-                // return current;
                 return 0;
             }
             if (diff < tm_packet) {
@@ -834,7 +820,6 @@ export class Kcp {
             minimal = this.interval;
         }
 
-        // return current + minimal;
         return minimal;
     }
 

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Kcp = exports.log = exports.IKCP_SN_OFFSET = exports.IKCP_PROBE_LIMIT = exports.IKCP_PROBE_INIT = exports.IKCP_THRESH_MIN = exports.IKCP_THRESH_INIT = exports.IKCP_DEADLINK = exports.IKCP_OVERHEAD = exports.IKCP_INTERVAL = exports.IKCP_ACK_FAST = exports.IKCP_MTU_DEF = exports.IKCP_WND_RCV = exports.IKCP_WND_SND = exports.IKCP_ASK_TELL = exports.IKCP_ASK_SEND = exports.IKCP_CMD_WINS = exports.IKCP_CMD_WASK = exports.IKCP_CMD_ACK = exports.IKCP_CMD_PUSH = exports.IKCP_RTO_MAX = exports.IKCP_RTO_DEF = exports.IKCP_RTO_MIN = exports.IKCP_RTO_NDL = void 0;
+exports.Kcp = exports.IKCP_SN_OFFSET = exports.IKCP_PROBE_LIMIT = exports.IKCP_PROBE_INIT = exports.IKCP_THRESH_MIN = exports.IKCP_THRESH_INIT = exports.IKCP_DEADLINK = exports.IKCP_OVERHEAD = exports.IKCP_INTERVAL = exports.IKCP_ACK_FAST = exports.IKCP_MTU_DEF = exports.IKCP_WND_RCV = exports.IKCP_WND_SND = exports.IKCP_ASK_TELL = exports.IKCP_ASK_SEND = exports.IKCP_CMD_WINS = exports.IKCP_CMD_WASK = exports.IKCP_CMD_ACK = exports.IKCP_CMD_PUSH = exports.IKCP_RTO_MAX = exports.IKCP_RTO_DEF = exports.IKCP_RTO_MIN = exports.IKCP_RTO_NDL = void 0;
 exports.IKCP_RTO_NDL = 30; // no delay min rto
 exports.IKCP_RTO_MIN = 100; // normal min rto
 exports.IKCP_RTO_DEF = 200;
@@ -23,10 +23,6 @@ exports.IKCP_THRESH_MIN = 2;
 exports.IKCP_PROBE_INIT = 7000; // 7 secs to probe window size
 exports.IKCP_PROBE_LIMIT = 120000; // up to 120 secs to probe window
 exports.IKCP_SN_OFFSET = 12;
-function log(...msg) {
-    console.log('[', new Date().toISOString(), ']', ...msg);
-}
-exports.log = log;
 const refTime = Date.now();
 function currentMs() {
     return Date.now() - refTime;
@@ -213,7 +209,6 @@ class Kcp {
         return this.user;
     }
     recv(buffer) {
-        // log('recv()');
         const peeksize = this.peekSize();
         if (peeksize < 0) {
             return -1;
@@ -268,7 +263,6 @@ class Kcp {
     //
     // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
     input(data, regular, ackNodelay) {
-        // log('input()', data);
         const snd_una = this.snd_una;
         if (data.byteLength < exports.IKCP_OVERHEAD) {
             return -1;
@@ -300,7 +294,6 @@ class Kcp {
             sn = ikcp_decode32u(data, 12);
             una = ikcp_decode32u(data, 16);
             length = ikcp_decode32u(data, 20);
-            // console.log('decode kcp 包', { conv, cmd, frg, wnd, ts, sn, una, length, data: data.slice(IKCP_OVERHEAD, IKCP_OVERHEAD + length) });
             data = data.slice(exports.IKCP_OVERHEAD);
             if (data.byteLength < length) {
                 return -2;
@@ -464,10 +457,8 @@ class Kcp {
     }
     // returns true if data has repeated
     _parse_data(newseg) {
-        // console.log('parse_data', { newseg, rcv_nxt: this.rcv_nxt, rcv_wnd: this.rcv_wnd });
         const sn = newseg.sn;
         if (sn >= this.rcv_nxt + this.rcv_wnd || sn < this.rcv_nxt) {
-            // console.log('fuck parse_data', { sn, rcvnxt: this.rcv_nxt, rcvwnd: this.rcv_wnd });
             return true;
         }
         let insert_idx = 0;
@@ -492,7 +483,6 @@ class Kcp {
             newseg.data = dataCopy;
             this.rcv_buf.splice(insert_idx, 0, newseg);
         }
-        // console.log('插入 rcv_buf 之后', this.rcv_buf);
         // move available data from rcv_buf -> rcv_queue
         let count = 0;
         for (const seg of this.rcv_buf) {
@@ -508,7 +498,6 @@ class Kcp {
             const segs = this.rcv_buf.splice(0, count);
             this.rcv_queue.push(...segs);
         }
-        // console.log('快速挪到 rcv_queue', this.rcv_queue);
         return repeat;
     }
     _update_ack(rtt) {
@@ -640,21 +629,18 @@ class Kcp {
         let tm_packet = 0x7fffffff;
         let minimal = 0;
         if (this.updated === 0) {
-            // return current;
             return 0;
         }
         if (current - ts_flush >= 10000 || current - ts_flush < -10000) {
             ts_flush = current;
         }
         if (current >= ts_flush) {
-            // return current;
             return 0;
         }
         tm_flush = ts_flush - current;
         for (const seg of this.snd_buf) {
             const diff = seg.resendts - current;
             if (diff <= 0) {
-                // return current;
                 return 0;
             }
             if (diff < tm_packet) {
@@ -668,7 +654,6 @@ class Kcp {
         if (minimal >= this.interval) {
             minimal = this.interval;
         }
-        // return current + minimal;
         return minimal;
     }
     _wnd_unused() {
