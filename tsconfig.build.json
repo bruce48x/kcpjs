@@ -4,6 +4,7 @@
         "node_modules",
         "**/*.d.ts",
         "**/*.spec.ts",
+        "./examples/**/*.*",
         "./dist/**/*.*"
     ]
 }

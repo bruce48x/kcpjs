@@ -35,6 +35,7 @@
     "exclude": [
         "node_modules",
         "**/*.d.ts",
+        "./examples/**/*.*",
         "./dist/**/*.*"
     ],
     "typeAcquisition": {

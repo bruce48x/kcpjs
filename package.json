@@ -1,7 +1,8 @@
 {
   "name": "kcpjs",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "kcpjs = c_to_js(kcp)",
+  "homepage": "https://github.com/bruce48x/kcpjs",
   "main": "./kcp.js",
   "scripts": {
     "build": "yarn format && yarn lint && yarn buildcode",

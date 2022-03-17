@@ -1,60 +1,64 @@
-const IKCP_RTO_NDL = 30; // no delay min rto
-const IKCP_RTO_MIN = 100; // normal min rto
-const IKCP_RTO_DEF = 200;
-const IKCP_RTO_MAX = 60000;
-const IKCP_CMD_PUSH = 81; // cmd: push data
-const IKCP_CMD_ACK = 82; // cmd: ack
-const IKCP_CMD_WASK = 83; // cmd: window probe (ask)
-const IKCP_CMD_WINS = 84; // cmd: window size (tell)
-const IKCP_ASK_SEND = 1; // need to send IKCP_CMD_WASK
-const IKCP_ASK_TELL = 2; // need to send IKCP_CMD_WINS
-const IKCP_WND_SND = 32;
-const IKCP_WND_RCV = 32;
-const IKCP_MTU_DEF = 1400;
-const IKCP_ACK_FAST = 3;
-const IKCP_INTERVAL = 100;
-const IKCP_OVERHEAD = 24;
-const IKCP_DEADLINK = 20;
-const IKCP_THRESH_INIT = 2;
-const IKCP_THRESH_MIN = 2;
-const IKCP_PROBE_INIT = 7000; // 7 secs to probe window size
-const IKCP_PROBE_LIMIT = 120000; // up to 120 secs to probe window
-const IKCP_SN_OFFSET = 12;
+export const IKCP_RTO_NDL = 30; // no delay min rto
+export const IKCP_RTO_MIN = 100; // normal min rto
+export const IKCP_RTO_DEF = 200;
+export const IKCP_RTO_MAX = 60000;
+export const IKCP_CMD_PUSH = 81; // cmd: push data
+export const IKCP_CMD_ACK = 82; // cmd: ack
+export const IKCP_CMD_WASK = 83; // cmd: window probe (ask)
+export const IKCP_CMD_WINS = 84; // cmd: window size (tell)
+export const IKCP_ASK_SEND = 1; // need to send IKCP_CMD_WASK
+export const IKCP_ASK_TELL = 2; // need to send IKCP_CMD_WINS
+export const IKCP_WND_SND = 32;
+export const IKCP_WND_RCV = 32;
+export const IKCP_MTU_DEF = 1400;
+export const IKCP_ACK_FAST = 3;
+export const IKCP_INTERVAL = 100;
+export const IKCP_OVERHEAD = 24;
+export const IKCP_DEADLINK = 20;
+export const IKCP_THRESH_INIT = 2;
+export const IKCP_THRESH_MIN = 2;
+export const IKCP_PROBE_INIT = 7000; // 7 secs to probe window size
+export const IKCP_PROBE_LIMIT = 120000; // up to 120 secs to probe window
+export const IKCP_SN_OFFSET = 12;
 
-const refTime = new Date().getTime();
+export function log(...msg) {
+    console.log('[', new Date().toISOString(), ']', ...msg);
+}
+
+const refTime = Date.now();
 
 function currentMs(): number {
-    return new Date().getTime() - refTime;
+    return Date.now() - refTime;
 }
 
 /* encode 8 bits unsigned int */
 function ikcp_encode8u(p: Buffer, c: number, offset = 0): void {
-    p.writeUint8(c, offset);
+    p.writeUInt8(c, offset);
 }
 
 /* decode 8 bits unsigned int */
 function ikcp_decode8u(p: Buffer, offset = 0): number {
-    return p.readUint8(offset);
+    return p.readUInt8(offset);
 }
 
 /* encode 16 bits unsigned int (lsb) */
 function ikcp_encode16u(p: Buffer, w: number, offset = 0) {
-    p.writeUint16LE(w, offset);
+    p.writeUInt16LE(w, offset);
 }
 
 /* decode 16 bits unsigned int (lsb) */
 function ikcp_decode16u(p: Buffer, offset = 0): number {
-    return p.readUint16LE(offset);
+    return p.readUInt16LE(offset);
 }
 
 /* encode 32 bits unsigned int (lsb) */
 function ikcp_encode32u(p: Buffer, l: number, offset = 0): void {
-    p.writeUint32LE(l, offset);
+    p.writeUInt32LE(l, offset);
 }
 
 /* decode 32 bits unsigned int (lsb) */
 function ikcp_decode32u(p: Buffer, offset = 0): number {
-    return p.readUint32LE(offset);
+    return p.readUInt32LE(offset);
 }
 
 function _ibound_(lower: number, middle: number, upper: number): number {
@@ -75,6 +79,7 @@ class Segment {
     cmd: number;
     // uint8
     // fragment 的缩写
+    // 代表数据分片的倒序序号，当数据大于 mss 时，需要将数据分片
     frg: number;
     // uint16
     // window 的缩写
@@ -98,7 +103,7 @@ class Segment {
 
     data: Buffer;
 
-    constructor() {
+    constructor(size?: number) {
         this.conv = 0;
         this.cmd = 0;
         this.frg = 0;
@@ -111,6 +116,9 @@ class Segment {
         this.resendts = 0;
         this.fastack = 0;
         this.acked = 0;
+        if (size) {
+            this.data = Buffer.alloc(size);
+        }
     }
 
     // encode a segment into buffer
@@ -122,7 +130,8 @@ class Segment {
         ikcp_encode32u(ptr, this.ts, 8);
         ikcp_encode32u(ptr, this.sn, 12);
         ikcp_encode32u(ptr, this.una, 16);
-        ikcp_encode32u(ptr, this.data.byteLength, 20);
+        const len = this.data?.byteLength || 0;
+        ikcp_encode32u(ptr, len, 20);
         return ptr.slice(IKCP_OVERHEAD);
     }
 }
@@ -156,19 +165,13 @@ export class Kcp {
     snd_wnd: number;
     rcv_wnd: number;
     rmt_wnd: number;
+    // 拥塞窗口的大小
     cwnd: number;
     probe: number;
     // uint32
-    current: number;
     interval: number;
     ts_flush: number;
     xmit: number;
-
-    nrcv_buf: number;
-    nsnd_buf: number;
-
-    nrcv_que: number;
-    nsnd_que: number;
 
     nodelay: number;
     updated: number;
@@ -202,39 +205,34 @@ export class Kcp {
 
     constructor(conv: number, user: any) {
         this.conv = conv;
-        this.mtu = 0;
-        this.mss = 0;
+        this.mtu = IKCP_MTU_DEF;
+        this.mss = this.mtu - IKCP_OVERHEAD;
+        this.buffer = Buffer.alloc(this.mtu);
         this.state = 0;
 
-        this.snd_una = 0;
-        this.snd_nxt = 0;
-        this.rcv_nxt = 0;
+        this.snd_una = 0; // 发送出去未得到确认的包的序号
+        this.snd_nxt = 0; // 下一个发出去的包的序号
+        this.rcv_nxt = 0; // 待接收的下一个包的序号
 
         this.ts_recent = 0;
         this.ts_lastack = 0;
-        this.ssthresh = 0;
+        this.ssthresh = IKCP_THRESH_INIT;
 
         this.rx_rttvar = 0;
         this.rx_srtt = 0;
-        this.rx_rto = 0;
-        this.rx_minrto = 0;
+        this.rx_rto = IKCP_RTO_DEF;
+        this.rx_minrto = IKCP_RTO_MIN;
 
-        this.snd_wnd = 0;
-        this.rcv_wnd = 0;
-        this.rmt_wnd = 0;
+        this.snd_wnd = IKCP_WND_SND; // [发送窗口]的大小
+        this.rcv_wnd = IKCP_WND_RCV; // [接收窗口]的大小
+        this.rmt_wnd = IKCP_WND_RCV; // 远端的[接收窗口]的大小
         this.cwnd = 0;
         this.probe = 0;
 
-        this.current = 0;
-        this.interval = 0;
-        this.ts_flush = 0;
+        // this.current = 0;
+        this.interval = IKCP_INTERVAL;
+        this.ts_flush = IKCP_INTERVAL;
         this.xmit = 0;
-
-        this.nrcv_buf = 0;
-        this.nsnd_buf = 0;
-
-        this.nrcv_que = 0;
-        this.nsnd_que = 0;
 
         this.nodelay = 0;
         this.updated = 0;
@@ -242,7 +240,7 @@ export class Kcp {
         this.ts_probe = 0;
         this.probe_wait = 0;
 
-        this.dead_link = 0;
+        this.dead_link = IKCP_DEADLINK;
         this.incr = 0;
 
         this.snd_queue = [];
@@ -250,10 +248,9 @@ export class Kcp {
         this.snd_buf = [];
         this.rcv_buf = [];
 
-        this.acklist = [];
-
-        this.ackcount = 0;
-        this.ackblock = 0;
+        this.acklist = []; // ack 列表，收到的 ack 放在这里
+        this.ackcount = 0; // ack 的个数
+        this.ackblock = 0; // acklist 的大小，这个值 >= ackCount
 
         this.fastresend = 0; // int
         this.nocwnd = 0; // int
@@ -268,16 +265,6 @@ export class Kcp {
         if (seg?.data) {
             seg.data = undefined;
         }
-    }
-
-    private _removeFront(q: Segment[], n: number): Segment[] {
-        return q.splice(0, n);
-    }
-
-    private _newSegment(size: number) {
-        const seg = new Segment();
-        seg.data = Buffer.alloc(size);
-        return seg;
     }
 
     setWndSize(sndwnd: number, rcvwnd: number): number {
@@ -347,16 +334,15 @@ export class Kcp {
         this.rcv_queue = undefined;
         this.buffer = undefined;
         this.acklist = undefined;
-        this.nrcv_buf = 0;
-        this.nsnd_buf = 0;
-        this.nrcv_que = 0;
-        this.nsnd_que = 0;
         this.ackcount = 0;
     }
 
-    // context(): ISocket;
+    context(): any {
+        return this.user;
+    }
 
     recv(buffer: Buffer): number {
+        // log('recv()');
         const peeksize = this.peekSize();
         if (peeksize < 0) {
             return -1;
@@ -383,7 +369,7 @@ export class Kcp {
             }
         }
         if (count > 0) {
-            this.rcv_queue = this._removeFront(this.rcv_queue, count);
+            this.rcv_queue.splice(0, count);
         }
 
         // move available data from rcv_buf -> rcv_queue
@@ -398,8 +384,8 @@ export class Kcp {
         }
 
         if (count > 0) {
-            this.rcv_queue.push(...this.rcv_buf.slice(0, count));
-            this.rcv_buf = this._removeFront(this.rcv_buf, count);
+            const segs = this.rcv_buf.splice(0, count);
+            this.rcv_queue.push(...segs);
         }
 
         // fast recover
@@ -416,7 +402,7 @@ export class Kcp {
     //
     // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
     input(data: Buffer, regular: boolean, ackNodelay: boolean): number {
-        // todo
+        // log('input()', data);
         const snd_una = this.snd_una;
         if (data.byteLength < IKCP_OVERHEAD) {
             return -1;
@@ -424,18 +410,18 @@ export class Kcp {
 
         let latest = 0; // uint32 , the latest ack packet
         let flag = 0; // int
-        let inSegs = 0; // uint64
+        let inSegs = 0; // uint64 统计用
         let windowSlides = false;
 
         while (true) {
-            let ts = 0,
-                sn = 0,
-                length = 0,
-                una = 0,
-                conv = 0; // uint32
+            let ts = 0; // uint32
+            let sn = 0; // uint32
+            let length = 0; // uint32
+            let una = 0; // uint32
+            let conv = 0; // uint32
             let wnd = 0; // uint16
-            let cmd = 0,
-                frg = 0; // uint8
+            let cmd = 0; // uint3
+            let frg = 0; // uint8
 
             if (data.byteLength < IKCP_OVERHEAD) {
                 break;
@@ -453,7 +439,9 @@ export class Kcp {
             sn = ikcp_decode32u(data, 12);
             una = ikcp_decode32u(data, 16);
             length = ikcp_decode32u(data, 20);
-            if (data.byteLength - IKCP_OVERHEAD < length) {
+            // console.log('decode kcp 包', { conv, cmd, frg, wnd, ts, sn, una, length, data: data.slice(IKCP_OVERHEAD, IKCP_OVERHEAD + length) });
+            data = data.slice(IKCP_OVERHEAD);
+            if (data.byteLength < length) {
                 return -2;
             }
 
@@ -507,7 +495,7 @@ export class Kcp {
             }
 
             inSegs++;
-            data = data.slice(length);
+            data = data.slice(IKCP_OVERHEAD + length);
         }
 
         // update rtt with the latest ts
@@ -568,7 +556,7 @@ export class Kcp {
             }
         }
         if (count > 0) {
-            this.snd_buf = this._removeFront(this.snd_buf, count);
+            this.snd_buf.splice(0, count);
         }
         return count;
     }
@@ -619,23 +607,27 @@ export class Kcp {
 
     // returns true if data has repeated
     private _parse_data(newseg: Segment): boolean {
+        // console.log('parse_data', { newseg, rcv_nxt: this.rcv_nxt, rcv_wnd: this.rcv_wnd });
         const sn = newseg.sn;
         if (sn >= this.rcv_nxt + this.rcv_wnd || sn < this.rcv_nxt) {
+            // console.log('fuck parse_data', { sn, rcvnxt: this.rcv_nxt, rcvwnd: this.rcv_wnd });
             return true;
         }
 
-        const n = this.rcv_buf.length - 1;
         let insert_idx = 0;
         let repeat = false;
-        for (let i = n; i >= 0; i--) {
-            const seg = this.rcv_buf[i];
-            if (seg.sn === sn) {
-                repeat = true;
-                break;
-            }
-            if (sn > seg.sn) {
-                insert_idx = i + 1;
-                break;
+        if (this.rcv_buf.length > 0) {
+            const n = this.rcv_buf.length - 1;
+            for (let i = n; i >= 0; i--) {
+                const seg = this.rcv_buf[i];
+                if (seg.sn === sn) {
+                    repeat = true;
+                    break;
+                }
+                if (sn > seg.sn) {
+                    insert_idx = i + 1;
+                    break;
+                }
             }
         }
 
@@ -646,6 +638,7 @@ export class Kcp {
 
             this.rcv_buf.splice(insert_idx, 0, newseg);
         }
+        // console.log('插入 rcv_buf 之后', this.rcv_buf);
 
         // move available data from rcv_buf -> rcv_queue
         let count = 0;
@@ -658,9 +651,10 @@ export class Kcp {
             }
         }
         if (count > 0) {
-            this.rcv_queue.push(...this.rcv_buf.slice(0, count));
-            this.rcv_buf = this._removeFront(this.rcv_buf, count);
+            const segs = this.rcv_buf.splice(0, count);
+            this.rcv_queue.push(...segs);
         }
+        // console.log('快速挪到 rcv_queue', this.rcv_queue);
 
         return repeat;
     }
@@ -743,7 +737,7 @@ export class Kcp {
             } else {
                 size = buffer.byteLength;
             }
-            const seg = this._newSegment(size);
+            const seg = new Segment(size);
             buffer.copy(seg.data, 0, 0, size);
             if (this.stream === 0) {
                 // message mode
@@ -763,12 +757,10 @@ export class Kcp {
         this.output = output;
     }
 
-    // (deprecated)
-    //
     // Update updates state (call it repeatedly, every 10ms-100ms), or you can ask
     // ikcp_check when to call it again (without ikcp_input/_send calling).
     // 'current' - current timestamp in millisec.
-    update(ts: number): void {
+    update(): void {
         let slap = 0; // int32
 
         const current = currentMs();
@@ -793,8 +785,6 @@ export class Kcp {
         }
     }
 
-    // (deprecated)
-    //
     // Check determines when should you invoke ikcp_update:
     // returns when you should invoke ikcp_update in millisec, if there
     // is no ikcp_input/_send calling. you can call ikcp_update in that
@@ -802,7 +792,7 @@ export class Kcp {
     // Important to reduce unnacessary ikcp_update invoking. use it to
     // schedule ikcp_update (eg. implementing an epoll-like mechanism,
     // or optimize ikcp_update when handling massive kcp connections)
-    check(ts: number): number {
+    check(): number {
         const current = currentMs();
         let ts_flush = this.ts_flush;
         let tm_flush = 0x7fffffff;
@@ -810,7 +800,8 @@ export class Kcp {
         let minimal = 0;
 
         if (this.updated === 0) {
-            return current;
+            // return current;
+            return 0;
         }
 
         if (current - ts_flush >= 10000 || current - ts_flush < -10000) {
@@ -818,7 +809,8 @@ export class Kcp {
         }
 
         if (current >= ts_flush) {
-            return current;
+            // return current;
+            return 0;
         }
 
         tm_flush = ts_flush - current;
@@ -826,7 +818,8 @@ export class Kcp {
         for (const seg of this.snd_buf) {
             const diff = seg.resendts - current;
             if (diff <= 0) {
-                return current;
+                // return current;
+                return 0;
             }
             if (diff < tm_packet) {
                 tm_packet = diff;
@@ -841,7 +834,8 @@ export class Kcp {
             minimal = this.interval;
         }
 
-        return current + minimal;
+        // return current + minimal;
+        return minimal;
     }
 
     private _wnd_unused(): number {
@@ -959,7 +953,7 @@ export class Kcp {
             newSegsCount++;
         }
         if (newSegsCount > 0) {
-            this.snd_queue = this._removeFront(this.snd_queue, newSegsCount);
+            this.snd_queue.splice(0, newSegsCount);
         }
 
         // calculate resent
@@ -970,13 +964,14 @@ export class Kcp {
 
         // check for retransmissions
         const current = currentMs();
-        let change = 0,
-            lostSegs = 0,
-            fastRetransSegs = 0,
-            earlyRetransSegs = 0;
+        let change = 0;
+        let lostSegs = 0;
+        let fastRetransSegs = 0;
+        let earlyRetransSegs = 0;
         let minrto = this.interval;
 
-        const ref = this.snd_buf.slice(); // for bounds check elimination
+        // const ref = this.snd_buf.slice(); // for bounds check elimination
+        const ref = this.snd_buf;
         for (let k = 0; k < ref.length; k++) {
             const segment = ref[k];
             let needsend = false;
@@ -1027,8 +1022,8 @@ export class Kcp {
                 const need = IKCP_OVERHEAD + segment.data.byteLength;
                 makeSpace(need);
                 ptr = segment.encode(ptr);
-                seg.data.copy(ptr);
-                ptr = ptr.slice(seg.data.byteLength);
+                segment.data.copy(ptr);
+                ptr = ptr.slice(segment.data.byteLength);
 
                 if (segment.xmit >= this.dead_link) {
                     this.state = 0xffffffff;
@@ -1109,7 +1104,7 @@ export class Kcp {
 
         let length = 0;
         for (const seg of this.rcv_queue) {
-            length += seg.data.length;
+            length += seg.data.byteLength;
             if (seg.frg === 0) {
                 break;
             }
