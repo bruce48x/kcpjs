@@ -1,4 +1,4 @@
-import { Kcp } from '../kcp';
+import { Kcp } from '../src/kcp';
 import * as dgram from 'dgram';
 import { log } from './common';
 
@@ -24,10 +24,10 @@ server.on('message', (msg, rinfo) => {
         };
         const kcpObj = new Kcp(255, context);
         kcpObj.setOutput(output);
+        kcpObj.setReserveBytes(8);
         clients[k] = kcpObj;
         check(kcpObj);
     }
-    log('on message');
 
     const kcpObj = clients[k];
     kcpObj.input(msg, true, false);
@@ -59,11 +59,5 @@ function check(kcpObj: Kcp) {
         check(kcpObj);
     }, kcpObj.check());
 }
-
-// setInterval(()=>{
-//     for (const k in clients) {
-//         clients[k].update();
-//     }
-// }, 100);
 
 server.bind(22333);

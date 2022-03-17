@@ -1,8 +1,9 @@
-import { Kcp } from '../kcp';
+import { Kcp } from '../src/kcp';
 import * as dgram from 'dgram';
 import { log } from './common';
 
 const kcpObj = new Kcp(255, { address: '127.0.0.1', port: 22333 });
+kcpObj.setReserveBytes(8);
 const client = dgram.createSocket('udp4');
 
 kcpObj.setOutput((data, size, context) => {

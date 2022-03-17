@@ -17,10 +17,8 @@
         "noImplicitThis": false,
         "inlineSourceMap": false,
         "downlevelIteration": true,
-        "rootDirs": [
-            "."
-        ], //仅用来控制输出的目录结构--outDir。
-        // "outDir": "./dist", //重定向输出目录。
+        "baseUrl": "./src",
+        "outDir": "./dist", //重定向输出目录。
         "experimentalDecorators": true,
         "emitDecoratorMetadata": true,
         "newLine": "LF", // 保持换行都是 /n
