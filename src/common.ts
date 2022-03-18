@@ -1,14 +1,15 @@
-// const nonceSize = 16
+// 16-bytes nonce for each packet
+export const nonceSize = 16;
 // 4-bytes packet checksum
-// const crcSize = 4
+export const crcSize = 4;
 // overall crypto header size
-// const cryptHeaderSize = nonceSize + crcSize
+export const cryptHeaderSize = nonceSize + crcSize;
 
 // maximum packet size
-// const mtuLimit = 1400
+export const mtuLimit = 1400;
 
 // accept backlog
-// const acceptBacklog = 128
+export const acceptBacklog = 128;
 
 export const fecHeaderSize = 6;
 export const fecHeaderSizePlus2 = fecHeaderSize + 2; // plus 2B data size

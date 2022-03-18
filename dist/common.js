@@ -1,15 +1,16 @@
 "use strict";
-// const nonceSize = 16
-// 4-bytes packet checksum
-// const crcSize = 4
-// overall crypto header size
-// const cryptHeaderSize = nonceSize + crcSize
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.initCacheBlock = exports.multiple8 = exports.rxFECMulti = exports.typeParity = exports.typeData = exports.fecHeaderSizePlus2 = exports.fecHeaderSize = void 0;
+exports.initCacheBlock = exports.multiple8 = exports.rxFECMulti = exports.typeParity = exports.typeData = exports.fecHeaderSizePlus2 = exports.fecHeaderSize = exports.acceptBacklog = exports.mtuLimit = exports.cryptHeaderSize = exports.crcSize = exports.nonceSize = void 0;
+// 16-bytes nonce for each packet
+exports.nonceSize = 16;
+// 4-bytes packet checksum
+exports.crcSize = 4;
+// overall crypto header size
+exports.cryptHeaderSize = exports.nonceSize + exports.crcSize;
 // maximum packet size
-// const mtuLimit = 1400
+exports.mtuLimit = 1400;
 // accept backlog
-// const acceptBacklog = 128
+exports.acceptBacklog = 128;
 exports.fecHeaderSize = 6;
 exports.fecHeaderSizePlus2 = exports.fecHeaderSize + 2; // plus 2B data size
 exports.typeData = 0xf1;

@@ -664,6 +664,7 @@ class Kcp {
     }
     // flush pending data
     flush(ackOnly) {
+        // console.log('kcp.flush', ackOnly);
         const seg = new Segment();
         seg.conv = this.conv;
         seg.cmd = exports.IKCP_CMD_ACK;

@@ -75,7 +75,8 @@ export class FecEncoder {
     }
 
     encode(buff: Buffer, callback: EncodeCallback): void {
-        console.log('fec.encode()', buff);
+        // console.log('fec.encode()', buff);
+
         // The header format:
         // | FEC SEQID(4B) | FEC TYPE(2B) | SIZE (2B) | PAYLOAD(SIZE-2) |
         // |<-headerOffset                |<-payloadOffset

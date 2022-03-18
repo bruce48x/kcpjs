@@ -16,7 +16,7 @@ server.on('error', (err) => {
 });
 
 server.on('message', (msg, rinfo) => {
-    const k = rinfo.address + '_' + rinfo.port;
+    const k = rinfo.address + ':' + rinfo.port;
     if (!clients[k]) {
         const context = {
             address: rinfo.address,
@@ -34,6 +34,7 @@ server.on('message', (msg, rinfo) => {
 
     kcpObj.update();
     const size = kcpObj.peekSize();
+    log('on message, peeksize', size);
     if (size > 0) {
         const buffer = Buffer.alloc(size);
         const len = kcpObj.recv(buffer);

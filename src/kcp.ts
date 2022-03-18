@@ -832,6 +832,7 @@ export class Kcp {
 
     // flush pending data
     flush(ackOnly: boolean): number {
+        // console.log('kcp.flush', ackOnly);
         const seg = new Segment();
         seg.conv = this.conv;
         seg.cmd = IKCP_CMD_ACK;
