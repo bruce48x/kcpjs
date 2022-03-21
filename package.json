@@ -3,7 +3,7 @@
   "version": "1.0.2",
   "description": "kcpjs = kcpgo_to_js(kcp)",
   "homepage": "https://github.com/bruce48x/kcpjs",
-  "main": "./dist/kcp.js",
+  "main": "./dist/index.js",
   "scripts": {
     "build": "yarn format && yarn lint && yarn buildcode",
     "format": "prettier --write \"**/*.ts\"",

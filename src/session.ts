@@ -19,18 +19,12 @@ export class Listener {
 
     sessions: { [key: string]: UDPSession }; // all sessions accepted by this Listener
     sessionLock: any;
-    // chAccepts: UDPSession[]; //chan *UDPSession // Listen() backlog
-    // chSessionClosed: any; //chan net.Addr    // session close queue
 
-    // die: any[]; // chan struct{} // notify the listener has closed
     dieOnce: any; // sync.Once
 
     // socket error handling
     socketReadError: any; //atomic.Value
-    // chSocketReadError: any[]; //chan struct{}
     socketReadErrorOnce: any; //sync.Once
-
-    rd: any; // atomic.Value // read deadline for Accept()
 
     callback: ListenCallback;
 
@@ -54,7 +48,6 @@ export class Listener {
         }
 
         const addr = addrToString(rinfo);
-        console.log(`from client ${addr}`);
         if (decrypted && data.byteLength >= IKCP_OVERHEAD) {
             let sess = this.sessions[addr];
             let conv = 0;
@@ -76,7 +69,6 @@ export class Listener {
                 sn = data.readUInt32LE(IKCP_SN_OFFSET);
                 convRecovered = true;
             }
-            console.log('正常的数据', {conv,sn,convRecovered, sess:!!sess, fecFlag});
 
             if (sess) {
                 // existing connection
@@ -105,189 +97,23 @@ export class Listener {
                 });
                 this.sessions[addr] = sess;
                 this.callback(sess);
-                // this.chAccepts.push(sess)
                 sess.kcpInput(data);
             }
-
-            /*
-            const size = sess.kcp.peekSize();
-            console.log('on message, peeksize', size);
-            if (size > 0) {
-                const buffer = Buffer.alloc(size);
-                const len = sess.kcp.recv(buffer);
-                if (len) {
-                    const msg = buffer.slice(0, len);
-                    console.log(`recv: ${msg} from ${sess.kcp.context().address}:${sess.kcp.context().port}`);
-                    sess.kcp.send(Buffer.from(msg));
-                }
-            }
-            */
         }
-    }
-
-    private notifyReadError(err: Error) {
-        /*
-        l.socketReadErrorOnce.Do(func() {
-            l.socketReadError.Store(err)
-            close(l.chSocketReadError)
-    
-            // propagate read error to all sessions
-            l.sessionLock.RLock()
-            for _, s := range l.sessions {
-                s.notifyReadError(err)
-            }
-            l.sessionLock.RUnlock()
-        })
-        */
-    }
-
-    // SetReadBuffer sets the socket read buffer for the Listener
-    private SetReadBuffer(bytes: number): any {
-        /*
-        if nc, ok := l.conn.(setReadBuffer); ok {
-            return nc.SetReadBuffer(bytes)
-        }
-        return errInvalidOperation
-        */
-    }
-
-    // SetWriteBuffer sets the socket write buffer for the Listener
-    SetWriteBuffer(bytes: number): void {
-        /*
-       if nc, ok := l.conn.(setWriteBuffer); ok {
-           return nc.SetWriteBuffer(bytes)
-       }
-       return errInvalidOperation
-       */
-    }
-
-    // SetDSCP sets the 6bit DSCP field in IPv4 header, or 8bit Traffic Class in IPv6 header.
-    //
-    // if the underlying connection has implemented `func SetDSCP(int) error`, SetDSCP() will invoke
-    // this function instead.
-    SetDSCP(dscp: number): void {
-        /*
-       // interface enabled
-       if ts, ok := l.conn.(setDSCP); ok {
-           return ts.SetDSCP(dscp)
-       }
-   
-       if nc, ok := l.conn.(net.Conn); ok {
-           var succeed bool
-           if err := ipv4.NewConn(nc).SetTOS(dscp << 2); err == nil {
-               succeed = true
-           }
-           if err := ipv6.NewConn(nc).SetTrafficClass(dscp); err == nil {
-               succeed = true
-           }
-   
-           if succeed {
-               return nil
-           }
-       }
-       return errInvalidOperation
-       */
-    }
-
-    // Accept implements the Accept method in the Listener interface; it waits for the next call and returns a generic Conn.
-    Accept(): any {
-        return this.AcceptKCP();
-    }
-
-    // AcceptKCP accepts a KCP connection
-    AcceptKCP(): UDPSession {
-        /*
-       var timeout <-chan time.Time
-       if tdeadline, ok := l.rd.Load().(time.Time); ok && !tdeadline.IsZero() {
-           timeout = time.After(time.Until(tdeadline))
-       }
-   
-       select {
-       case <-timeout:
-           return nil, errors.WithStack(errTimeout)
-       case c := <-l.chAccepts:
-           return c, nil
-       case <-l.chSocketReadError:
-           return nil, l.socketReadError.Load().(error)
-       case <-l.die:
-           return nil, errors.WithStack(io.ErrClosedPipe)
-       }
-       */
-        return undefined;
-    }
-
-    // SetDeadline sets the deadline associated with the listener. A zero time value disables the deadline.
-    SetDeadline(t: any): any {
-        /*
-       l.SetReadDeadline(t)
-       l.SetWriteDeadline(t)
-       return nil
-       */
-        this.SetReadDeadline(t);
-        this.SetWriteDeadline(t);
-    }
-
-    // SetReadDeadline implements the Conn SetReadDeadline method.
-    SetReadDeadline(t: any): any {
-        /*
-       l.rd.Store(t)
-       return nil
-       */
-    }
-
-    // SetWriteDeadline implements the Conn SetWriteDeadline method.
-    SetWriteDeadline(t: any): any {
-        //  return errInvalidOperation
     }
 
     // Close stops listening on the UDP address, and closes the socket
     Close(): any {
-        /*
-       var once bool
-       l.dieOnce.Do(func() {
-           close(l.die)
-           once = true
-       })
-   
-       var err error
-       if once {
-           if l.ownConn {
-               err = l.conn.Close()
-           }
-       } else {
-           err = errors.WithStack(io.ErrClosedPipe)
-       }
-       return err
-       */
         this.conn.close();
-    }
-
-    // closeSession notify the listener that a session has closed
-    private closeSession(remote: any): boolean {
-        /*
-        l.sessionLock.Lock()
-        defer l.sessionLock.Unlock()
-        if _, ok := l.sessions[remote.String()]; ok {
-            delete(l.sessions, remote.String())
-            return true
-        }
-        */
-        if (this.sessions[remote]) {
-            delete this.sessions[remote];
-            return true;
-        }
-        return false;
     }
 
     // Addr returns the listener's network address, The Addr returned is shared by all invocations of Addr, so do not modify it.
     Addr(): any {
-        //  return this.conn.LocalAddr()
         return this.conn.address;
     }
 
     monitor() {
         this.conn.on('message', (msg: Buffer, rinfo: dgram.RemoteInfo) => {
-            // console.log(`on message from client: ${msg}`);
             this.packetInput(msg, rinfo);
         });
     }
@@ -313,8 +139,6 @@ export class UDPSession extends EventEmitter {
     port: number;
     host: string;
 
-    rd: any; // time.Time // read deadline
-    wd: any; // time.Time // write deadline
     headerSize: number; // the header size additional to a KCP frame
     ackNoDelay: boolean; // send ack immediately for each incoming packet(testing purpose)
     writeDelay: boolean; // delay kcp.flush() for Write() for bulk transfer
@@ -335,7 +159,6 @@ export class UDPSession extends EventEmitter {
         // FEC codec
 
         // settings
-        // remote: any; // net.Addr  // remote peer address
         this.port = 0;
 
         this.headerSize = 0; // the header size additional to a KCP frame
@@ -409,18 +232,10 @@ export class UDPSession extends EventEmitter {
         */
         for (const b of v) {
             n += b.byteLength;
-            // console.log('sess.write(), will kcp.send()', b);
             this.kcp.send(b);
         }
         this.kcp.update();
-        // this.kcp.flush(false);
-        // this.uncork();
         return n;
-    }
-
-    uncork() {
-        // todo
-        // 无用，删掉
     }
 
     // Close closes the connection.
@@ -479,13 +294,6 @@ export class UDPSession extends EventEmitter {
         this.ackNoDelay = nodelay;
     }
 
-    // (deprecated)
-    //
-    // SetDUP duplicates udp packets for kcp output.
-    setDUP(dup: number) {
-        this.dup = dup;
-    }
-
     // SetNoDelay calls nodelay() of kcp
     // https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration
     setNoDelay(nodelay: number, interval: number, resend: number, nc: number) {
@@ -499,7 +307,6 @@ export class UDPSession extends EventEmitter {
     // 3. Encryption
     // 4. TxQueue
     output(buf: Buffer) {
-        // console.log('session.output', buf);
         const doOutput = (buff: Buffer) => {
             // 2&3. crc32 & encryption
             if (this.block) {
@@ -557,23 +364,6 @@ export class UDPSession extends EventEmitter {
         }, this.kcp.check());
     }
 
-    // sess update to trigger protocol
-    update() {
-        /*
-        while (true) {
-            const interval = this.kcp.flush(false);
-            const waitsnd = this.kcp.getWaitSnd();
-            if (waitsnd < this.kcp.snd_wnd && waitsnd < this.kcp.rmt_wnd) {
-                this.notifyWriteEvent();
-            }
-            this.uncork();
-            // self-synchronized timed scheduling
-            // todo
-            // SystemTimedSched.Put(s.update, time.Now().Add(time.Duration(interval)*time.Millisecond))
-        }
-        */
-    }
-
     // GetConv gets conversation id of a session
     getConv(): number {
         return this.kcp.conv;
@@ -629,15 +419,11 @@ export class UDPSession extends EventEmitter {
         const fecRecovered = 0;
         let fecParityShards = 0;
 
-        // fecFlag := binary.LittleEndian.Uint16(data[4:])
         const fpkt = new FecPacket(data);
-        // const fecFlag = data.readUInt16LE(4);
         const fecFlag = fpkt.flag();
         if (fecFlag == typeData || fecFlag == typeParity) {
             // 16bit kcp cmd [81-84] and frg [0-255] will not overlap with FEC type 0x00f1 0x00f2
             if (data.byteLength >= fecHeaderSizePlus2) {
-                // f := fecPacket(data)
-                // const f = new FecPacket(data);
                 if (fecFlag == typeParity) {
                     fecParityShards++;
                 }
@@ -651,20 +437,18 @@ export class UDPSession extends EventEmitter {
                         return;
                     }
                     const { data = [], parity = [] } = result;
-                    const buffs = [...data, ...parity];
-                    for (const buff of buffs) {
+                    for (const buff of data) {
                         const len = buff.readUInt16LE();
-                        const pkt = new FecPacket(buff);
-                        if (pkt.flag() === typeData) {
-                            const ret = this.kcp.input(buff.slice(2, 2 + len), true, this.ackNoDelay);
-                            if (ret != 0) {
-                                kcpInErrors++;
-                            }
-                        } else if (pkt.flag() === typeParity) {
-                            const ret = this.kcp.input(buff.slice(2, 2 + len), false, this.ackNoDelay);
-                            if (ret != 0) {
-                                kcpInErrors++;
-                            }
+                        const ret = this.kcp.input(buff.slice(2, 2 + len), true, this.ackNoDelay);
+                        if (ret != 0) {
+                            kcpInErrors++;
+                        }
+                    }
+                    for (const buff of parity) {
+                        const len = buff.readUInt16LE();
+                        const ret = this.kcp.input(buff.slice(2, 2 + len), false, this.ackNoDelay);
+                        if (ret != 0) {
+                            kcpInErrors++;
                         }
                     }
 
@@ -683,17 +467,14 @@ export class UDPSession extends EventEmitter {
                     this.uncork();
                     */
                     const size = this.kcp.peekSize();
-            console.log('on message, peeksize', size);
-            if (size > 0) {
-                const buffer = Buffer.alloc(size);
-                const len = this.kcp.recv(buffer);
-                if (len) {
-                    this.emit('recv', buffer.slice(0, len));
-                }
-            }
+                    if (size > 0) {
+                        const buffer = Buffer.alloc(size);
+                        const len = this.kcp.recv(buffer);
+                        if (len) {
+                            this.emit('recv', buffer.slice(0, len));
+                        }
+                    }
                 });
-            } else {
-                // atomic.AddUint64(&DefaultSnmp.InErrs, 1)
             }
         } else {
             this.kcp.input(data, true, this.ackNoDelay);
@@ -709,7 +490,6 @@ export class UDPSession extends EventEmitter {
             this.uncork();
             */
             const size = this.kcp.peekSize();
-            console.log('on message, peeksize', size);
             if (size > 0) {
                 const buffer = Buffer.alloc(size);
                 const len = this.kcp.recv(buffer);
@@ -720,19 +500,8 @@ export class UDPSession extends EventEmitter {
         }
     }
 
-    notifyReadEvent() {
-        // todo
-        // 没用
-    }
-
-    notifyWriteEvent() {
-        // todo
-        // 没用
-    }
-
     readLoop() {
         this.conn.on('message', (msg: Buffer) => {
-            console.log(`on message from server: ${msg}`);
             this.packetInput(msg);
         });
     }
@@ -818,8 +587,10 @@ export function ListenWithOptions(
 ): Listener {
     const socket = dgram.createSocket('udp4');
     socket.bind(port);
-    socket.on('listening', () => {
-        console.log('listening', port);
+    socket.on('listening', (err) => {
+        if (err) {
+            console.error(err);
+        }
     });
     return serveConn(block, dataShards, parityShards, socket, true, callback);
 }

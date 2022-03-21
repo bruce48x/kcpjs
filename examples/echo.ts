@@ -14,10 +14,8 @@ const conv = 255;
 // server
 const listener = ListenWithOptions(port, undefined, dataShards, parityShards, (session) => {
     // accept new session
-    log('新的客户端连接', session.getConv());
     session.on('recv', (buff: Buffer) => {
         session.write(buff);
-        // session.writeBuffers(buff);
     });
 });
 
