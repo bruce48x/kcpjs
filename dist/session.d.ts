@@ -1,0 +1,71 @@
+/// <reference types="node" />
+import * as dgram from 'dgram';
+import EventEmitter = require('events');
+import { FecDecoder } from './fecDecoder';
+import { FecEncoder } from './fecEncoder';
+import { Kcp } from './kcp';
+export declare class Listener {
+    block: any;
+    dataShards: number;
+    parityShards: number;
+    conn: dgram.Socket;
+    ownConn: boolean;
+    sessions: {
+        [key: string]: UDPSession;
+    };
+    sessionLock: any;
+    dieOnce: any;
+    socketReadError: any;
+    socketReadErrorOnce: any;
+    callback: ListenCallback;
+    private packetInput;
+    Close(): any;
+    Addr(): any;
+    monitor(): void;
+}
+export declare class UDPSession extends EventEmitter {
+    conn: dgram.Socket;
+    ownConn: boolean;
+    kcp: Kcp;
+    listener: Listener;
+    block: any;
+    recvbuf: Buffer;
+    bufptr: Buffer;
+    fecDecoder: FecDecoder;
+    fecEncoder: FecEncoder;
+    port: number;
+    host: string;
+    headerSize: number;
+    ackNoDelay: boolean;
+    writeDelay: boolean;
+    dup: number;
+    nonce: any;
+    constructor();
+    read(): void;
+    write(b: Buffer): number;
+    writeBuffers(v: Buffer[]): number;
+    close(): void;
+    localAddr(): any;
+    remoteAddr(): any;
+    setWriteDelay(delay: boolean): void;
+    setWindowSize(sndwnd: number, rcvwnd: number): void;
+    setMtu(mtu: number): boolean;
+    setStreamMode(enable: boolean): void;
+    setACKNoDelay(nodelay: boolean): void;
+    setNoDelay(nodelay: number, interval: number, resend: number, nc: number): void;
+    output(buf: Buffer): void;
+    check(): void;
+    getConv(): number;
+    getRTO(): number;
+    getSRTT(): number;
+    getSRTTVar(): number;
+    packetInput(data: Buffer): void;
+    kcpInput(data: Buffer): void;
+    readLoop(): void;
+}
+export declare type ListenCallback = (session: UDPSession) => void;
+export declare function Listen(port: number, callback: ListenCallback): any;
+export declare function ListenWithOptions(port: number, block: any, dataShards: number, parityShards: number, callback: ListenCallback): Listener;
+export declare function ServeConn(block: any, dataShards: number, parityShards: number, conn: dgram.Socket, callback: ListenCallback): Listener;
+export declare function Dial(conv: number, port: number, host: string): any;
+export declare function DialWithOptions(conv: number, port: number, host: string, block: any, dataShards: number, parityShards: number): UDPSession;

@@ -13,6 +13,7 @@
             "es2020",
             "esnext.asynciterable"
         ],
+        "declaration": true,                   /* Generates corresponding '.d.ts' file. */
         "noImplicitAny": false, //在表达式和声明上有隐含的'any'类型时报错。
         "noImplicitThis": false,
         "inlineSourceMap": false,
