@@ -49,15 +49,12 @@ export class FecDecoder {
     }
 
     decode(inData: FecPacket, callback: EncodeCallback): void {
-        // console.log('准备解码', inData);
         const seqId = inData.seqId();
         const type = inData.flag();
         const group = Math.floor(seqId / this._shardSize);
         if (undefined === this._cacheBlockMap[group]) {
             this._cacheBlockMap[group] = initCacheBlock(this._dataShards, this._parityShards);
         }
-
-        // console.log('decode参数1', { seqId, group, type, buff: inData.buff })
 
         const cacheBlock = this._cacheBlockMap[group];
         if (type === typeData) {
@@ -92,7 +89,6 @@ export class FecDecoder {
             }
         }
 
-        // console.log('decode参数2', cacheBlock)
         if (cacheBlock.numDataShards < this._dataShards && cacheBlock.numShards >= this._dataShards) {
             this._decode(cacheBlock, callback);
         } else {
@@ -140,7 +136,6 @@ export class FecDecoder {
         const paritySize = encoderParity.byteLength - parityOffset;
 
         const { sources, targets } = cacheBlock;
-        // console.log('解码参数', { shardSize, encoderBuffer, bufferSize, encoderParity, paritySize, sources, targets })
 
         ReedSolomon.encode(
             this._context,

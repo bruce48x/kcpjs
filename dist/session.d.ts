@@ -4,8 +4,9 @@ import EventEmitter = require('events');
 import { FecDecoder } from './fecDecoder';
 import { FecEncoder } from './fecEncoder';
 import { Kcp } from './kcp';
+import { CryptBlock } from 'crypt';
 export declare class Listener {
-    block: any;
+    block: CryptBlock;
     dataShards: number;
     parityShards: number;
     conn: dgram.Socket;
@@ -28,7 +29,7 @@ export declare class UDPSession extends EventEmitter {
     ownConn: boolean;
     kcp: Kcp;
     listener: Listener;
-    block: any;
+    block: CryptBlock;
     recvbuf: Buffer;
     bufptr: Buffer;
     fecDecoder: FecDecoder;
@@ -65,7 +66,23 @@ export declare class UDPSession extends EventEmitter {
 }
 export declare type ListenCallback = (session: UDPSession) => void;
 export declare function Listen(port: number, callback: ListenCallback): any;
-export declare function ListenWithOptions(port: number, block: any, dataShards: number, parityShards: number, callback: ListenCallback): Listener;
+export interface ListenOptions {
+    port: number;
+    block?: CryptBlock;
+    keyLength?: number;
+    dataShards?: number;
+    parityShards?: number;
+    callback: ListenCallback;
+}
+export declare function ListenWithOptions(opts: ListenOptions): Listener;
 export declare function ServeConn(block: any, dataShards: number, parityShards: number, conn: dgram.Socket, callback: ListenCallback): Listener;
 export declare function Dial(conv: number, port: number, host: string): any;
-export declare function DialWithOptions(conv: number, port: number, host: string, block: any, dataShards: number, parityShards: number): UDPSession;
+export interface DialOptions {
+    conv: number;
+    port: number;
+    host: string;
+    block?: CryptBlock;
+    dataShards?: number;
+    parityShards?: number;
+}
+export declare function DialWithOptions(opts: DialOptions): UDPSession;

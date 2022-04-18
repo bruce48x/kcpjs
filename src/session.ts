@@ -1,17 +1,27 @@
 import * as dgram from 'dgram';
 import EventEmitter = require('events');
-import { fecHeaderSizePlus2, typeData, typeParity, nonceSize, mtuLimit, cryptHeaderSize } from './common';
+import { fecHeaderSizePlus2, typeData, typeParity, nonceSize, mtuLimit, cryptHeaderSize, crcSize } from './common';
 import { FecDecoder } from './fecDecoder';
 import { FecEncoder } from './fecEncoder';
 import { FecPacket } from './fecPacket';
 import { IKCP_OVERHEAD, IKCP_SN_OFFSET, Kcp } from './kcp';
+import * as crypto from 'crypto';
+import * as crc32 from 'crc-32';
+import { CryptBlock } from 'crypt';
 
 function addrToString(rinfo: dgram.RemoteInfo) {
     return `${rinfo.address}:${rinfo.port}`;
 }
 
+// todo 这两个东西应该如何传输
+// const key = crypto.randomBytes(128/8);
+// The length of the initialization vector (iv) N must be between 7 and 13 bytes (7 ≤ N ≤ 13).
+// const iv = crypto.randomBytes(12);
+// The length of the plaintext is limited to 2 ** (8 * (15 - N)) bytes.
+// (Min: 65536 bytes when IV length is 13 bytes, Max: 18446744073709551616 bytes when IV length is 7 bytes)
+
 export class Listener {
-    block: any; // block encryption
+    block: CryptBlock; // block encryption
     dataShards: number; // FEC data shard
     parityShards: number; // FEC parity shard
     conn: dgram.Socket; // the underlying packet connection
@@ -32,17 +42,15 @@ export class Listener {
     private packetInput(data: Buffer, rinfo: dgram.RemoteInfo) {
         let decrypted = false;
         if (this.block && data.byteLength >= cryptHeaderSize) {
-            /*
-            l.block.Decrypt(data, data)
-             data = data[nonceSize:]
-             checksum := crc32.ChecksumIEEE(data[crcSize:])
-             if checksum == binary.LittleEndian.Uint32(data) {
-                 data = data[crcSize:]
-                 decrypted = true
-             } else {
-                 atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
-             }
-            */
+            data = this.block.decrypt(data);
+            const checksum = crc32.buf(data.slice(cryptHeaderSize)) >>> 0;
+            if (checksum === data.readUInt32LE(nonceSize)) {
+                data = data.slice(cryptHeaderSize);
+                decrypted = true;
+            } else {
+                // do nothing
+                // crc32 检测未通过
+            }
         } else if (!this.block) {
             decrypted = true;
         }
@@ -124,7 +132,7 @@ export class UDPSession extends EventEmitter {
     ownConn: boolean; // true if we created conn internally, false if provided by caller
     kcp: Kcp; // KCP ARQ protocol
     listener: Listener; // pointing to the Listener object if it's been accepted by a Listener
-    block: any; // BlockCrypt     // block encryption object
+    block: CryptBlock; // BlockCrypt     // block encryption object
 
     // kcp receiving is based on packets
     // recvbuf turns packets into stream
@@ -310,12 +318,10 @@ export class UDPSession extends EventEmitter {
         const doOutput = (buff: Buffer) => {
             // 2&3. crc32 & encryption
             if (this.block) {
-                this.nonce.Fill(buf.slice(0, nonceSize));
-                /*
-                checksum := crc32.ChecksumIEEE(buf[cryptHeaderSize:])
-                binary.LittleEndian.PutUint32(buf[nonceSize:], checksum)
-                s.block.Encrypt(buf, buf)
-                */
+                crypto.randomFillSync(buff, 0, nonceSize);
+                const checksum = crc32.buf(buff.slice(cryptHeaderSize)) >>> 0;
+                buff.writeUInt32LE(checksum, nonceSize);
+                buff = this.block.encrypt(buff);
 
                 /*
                 for k := range ecc {
@@ -387,20 +393,18 @@ export class UDPSession extends EventEmitter {
     // packet input stage
     packetInput(data: Buffer): void {
         let decrypted = false;
-        if (this.block != undefined && data.byteLength >= cryptHeaderSize) {
-            // todo
+        if (this.block && data.byteLength >= cryptHeaderSize) {
             // 解密
-            /*
-            s.block.Decrypt(data, data)
-            data = data[nonceSize:]
-            checksum := crc32.ChecksumIEEE(data[crcSize:])
-            if checksum == binary.LittleEndian.Uint32(data) {
-                data = data[crcSize:]
-                decrypted = true
+            data = this.block.decrypt(data);
+
+            const checksum = crc32.buf(data.slice(cryptHeaderSize)) >>> 0;
+            if (checksum === data.readUInt32LE(nonceSize)) {
+                data = data.slice(cryptHeaderSize);
+                decrypted = true;
             } else {
-                atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
+                // do nothing
+                // crc32 检测未通过
             }
-            */
         } else if (this.block == undefined) {
             decrypted = true;
         }
@@ -411,9 +415,6 @@ export class UDPSession extends EventEmitter {
     }
 
     kcpInput(data: Buffer) {
-        // todo
-        // 收到消息要触发 recv 事件，让外部可以处理
-
         let kcpInErrors = 0;
         const fecErrs = 0;
         const fecRecovered = 0;
@@ -517,7 +518,7 @@ function newUDPSession(args: {
     listener: Listener;
     conn: any;
     ownConn: boolean;
-    block: any;
+    block: CryptBlock;
 }): UDPSession {
     const { conv, port, host, dataShards, parityShards, listener, conn, ownConn, block } = args;
     const sess = new UDPSession();
@@ -531,11 +532,13 @@ function newUDPSession(args: {
     sess.recvbuf = Buffer.alloc(mtuLimit);
 
     // FEC codec initialization
-    sess.fecDecoder = new FecDecoder(dataShards, parityShards);
-    if (sess.block) {
-        sess.fecEncoder = new FecEncoder(dataShards, parityShards, cryptHeaderSize);
-    } else {
-        sess.fecEncoder = new FecEncoder(dataShards, parityShards, 0);
+    if (dataShards && parityShards) {
+        sess.fecDecoder = new FecDecoder(dataShards, parityShards);
+        if (sess.block) {
+            sess.fecEncoder = new FecEncoder(dataShards, parityShards, cryptHeaderSize);
+        } else {
+            sess.fecEncoder = new FecEncoder(dataShards, parityShards, 0);
+        }
     }
 
     // calculate additional header size introduced by FEC and encryption
@@ -568,7 +571,16 @@ export type ListenCallback = (session: UDPSession) => void;
 
 // Listen listens for incoming KCP packets addressed to the local address laddr on the network "udp",
 export function Listen(port: number, callback: ListenCallback): any {
-    return ListenWithOptions(port, null, 0, 0, callback);
+    return ListenWithOptions({ port, callback });
+}
+
+export interface ListenOptions {
+    port: number;
+    block?: CryptBlock;
+    keyLength?: number;
+    dataShards?: number;
+    parityShards?: number;
+    callback: ListenCallback;
 }
 
 // ListenWithOptions listens for incoming KCP packets addressed to the local address laddr on the network "udp" with packet encryption.
@@ -578,13 +590,8 @@ export function Listen(port: number, callback: ListenCallback): any {
 // 'dataShards', 'parityShards' specify how many parity packets will be generated following the data packets.
 //
 // Check https://github.com/klauspost/reedsolomon for details
-export function ListenWithOptions(
-    port: number,
-    block: any,
-    dataShards: number,
-    parityShards: number,
-    callback: ListenCallback,
-): Listener {
+export function ListenWithOptions(opts: ListenOptions): Listener {
+    const { port, block, dataShards, parityShards, callback } = opts;
     const socket = dgram.createSocket('udp4');
     socket.bind(port);
     socket.on('listening', (err) => {
@@ -628,7 +635,16 @@ function serveConn(
 
 // Dial connects to the remote address "raddr" on the network "udp" without encryption and FEC
 export function Dial(conv: number, port: number, host: string): any {
-    return DialWithOptions(conv, port, host, null, 0, 0);
+    return DialWithOptions({ conv, port, host });
+}
+
+export interface DialOptions {
+    conv: number;
+    port: number;
+    host: string;
+    block?: CryptBlock;
+    dataShards?: number;
+    parityShards?: number;
 }
 
 // DialWithOptions connects to the remote address "raddr" on the network "udp" with packet encryption
@@ -638,14 +654,8 @@ export function Dial(conv: number, port: number, host: string): any {
 // 'dataShards', 'parityShards' specify how many parity packets will be generated following the data packets.
 //
 // Check https://github.com/klauspost/reedsolomon for details
-export function DialWithOptions(
-    conv: number,
-    port: number,
-    host: string,
-    block: any,
-    dataShards: number,
-    parityShards: number,
-): UDPSession {
+export function DialWithOptions(opts: DialOptions): UDPSession {
+    const { conv, port, host, dataShards, parityShards, block } = opts;
     const conn = dgram.createSocket('udp4');
     return newUDPSession({
         conv,

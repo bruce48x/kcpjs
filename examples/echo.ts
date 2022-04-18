@@ -1,7 +1,9 @@
 import { ListenWithOptions, DialWithOptions } from '../src/session';
+import * as crypto from 'crypto';
+import { AesBlock } from '../src/crypt';
 
 const dataShards = 4;
-const parityShards = 1;
+const parityShards = 0;
 
 function log(...msg) {
     console.log('[', new Date().toISOString(), ']', ...msg);
@@ -11,16 +13,33 @@ const host = '127.0.0.1';
 const port = 22333;
 const conv = 255;
 
+const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
+const key = crypto.randomBytes(128 / 8);
+const iv = crypto.randomBytes(12);
+
 // server
-const listener = ListenWithOptions(port, undefined, dataShards, parityShards, (session) => {
-    // accept new session
-    session.on('recv', (buff: Buffer) => {
-        session.write(buff);
-    });
+const listener = ListenWithOptions({
+    port,
+    block: new AesBlock(algorithm, key, iv),
+    dataShards,
+    parityShards,
+    callback: (session) => {
+        // accept new session
+        session.on('recv', (buff: Buffer) => {
+            session.write(buff);
+        });
+    },
 });
 
 // client
-const session = DialWithOptions(conv, port, host, undefined, dataShards, parityShards);
+const session = DialWithOptions({
+    conv,
+    port,
+    host,
+    block: new AesBlock(algorithm, key, iv),
+    dataShards,
+    parityShards,
+});
 session.on('recv', (buff: Buffer) => {
     log('recv:', buff.toString());
 });

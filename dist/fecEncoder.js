@@ -22,13 +22,13 @@ class FecEncoder {
         this._next = 0;
     }
     markData(data) {
-        data.writeUInt32LE(this._next);
-        data.writeUInt16LE(common_1.typeData, 4);
+        data.writeUInt32LE(this._next, this._headerOffset);
+        data.writeUInt16LE(common_1.typeData, this._headerOffset + 4);
         this._next++;
     }
     markParity(data) {
-        data.writeUInt32LE(this._next);
-        data.writeUInt16LE(common_1.typeParity, 4);
+        data.writeUInt32LE(this._next, this._headerOffset);
+        data.writeUInt16LE(common_1.typeParity, this._headerOffset + 4);
         // sequence wrap will only happen at parity shard
         this._next = (this._next + 1) % this._paws;
     }
@@ -44,12 +44,11 @@ class FecEncoder {
         });
     }
     encode(buff, callback) {
-        // console.log('fec.encode()', buff);
         // The header format:
         // | FEC SEQID(4B) | FEC TYPE(2B) | SIZE (2B) | PAYLOAD(SIZE-2) |
         // |<-headerOffset                |<-payloadOffset
         this.markData(buff);
-        const len = buff.slice(8).byteLength;
+        const len = buff.slice(this._headerOffset + common_1.fecHeaderSizePlus2).byteLength;
         buff.writeUInt16LE(len, this._payloadOffset);
         // copy data from payloadOffset to fec shard cache
         const sz = buff.byteLength - this._payloadOffset;
@@ -77,6 +76,7 @@ class FecEncoder {
     }
     _encode(cacheBlock, buff, callback) {
         const bufferOffset = 0;
+        // const bufferOffset = this._headerOffset;
         const parityOffset = 0;
         // 把数据包补足为长度相同的 buffer
         const shardSize = common_1.multiple8(cacheBlock.maxSize);
@@ -95,7 +95,6 @@ class FecEncoder {
         const paritySize = shardSize * this._parityShards;
         const encoderParity = Buffer.alloc(paritySize);
         const { sources, targets } = cacheBlock;
-        // console.log('编码参数', { shardSize, encoderBuffer, bufferSize, encoderParity, paritySize, sources, targets })
         ReedSolomon.encode(this._context, sources, targets, encoderBuffer, bufferOffset, bufferSize, encoderParity, parityOffset, paritySize, (error) => {
             const parity = [];
             for (let i = 0; i < this._parityShards; i++) {

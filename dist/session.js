@@ -8,25 +8,32 @@ const fecDecoder_1 = require("./fecDecoder");
 const fecEncoder_1 = require("./fecEncoder");
 const fecPacket_1 = require("./fecPacket");
 const kcp_1 = require("./kcp");
+const crypto = require("crypto");
+const crc32 = require("crc-32");
 function addrToString(rinfo) {
     return `${rinfo.address}:${rinfo.port}`;
 }
+// todo 这两个东西应该如何传输
+// const key = crypto.randomBytes(128/8);
+// The length of the initialization vector (iv) N must be between 7 and 13 bytes (7 ≤ N ≤ 13).
+// const iv = crypto.randomBytes(12);
+// The length of the plaintext is limited to 2 ** (8 * (15 - N)) bytes.
+// (Min: 65536 bytes when IV length is 13 bytes, Max: 18446744073709551616 bytes when IV length is 7 bytes)
 class Listener {
     // packet input stage
     packetInput(data, rinfo) {
         let decrypted = false;
         if (this.block && data.byteLength >= common_1.cryptHeaderSize) {
-            /*
-            l.block.Decrypt(data, data)
-             data = data[nonceSize:]
-             checksum := crc32.ChecksumIEEE(data[crcSize:])
-             if checksum == binary.LittleEndian.Uint32(data) {
-                 data = data[crcSize:]
-                 decrypted = true
-             } else {
-                 atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
-             }
-            */
+            data = this.block.decrypt(data);
+            const checksum = crc32.buf(data.slice(common_1.cryptHeaderSize)) >>> 0;
+            if (checksum === data.readUInt32LE(common_1.nonceSize)) {
+                data = data.slice(common_1.cryptHeaderSize);
+                decrypted = true;
+            }
+            else {
+                // do nothing
+                // crc32 检测未通过
+            }
         }
         else if (!this.block) {
             decrypted = true;
@@ -246,12 +253,10 @@ class UDPSession extends EventEmitter {
         const doOutput = (buff) => {
             // 2&3. crc32 & encryption
             if (this.block) {
-                this.nonce.Fill(buf.slice(0, common_1.nonceSize));
-                /*
-                checksum := crc32.ChecksumIEEE(buf[cryptHeaderSize:])
-                binary.LittleEndian.PutUint32(buf[nonceSize:], checksum)
-                s.block.Encrypt(buf, buf)
-                */
+                crypto.randomFillSync(buff, 0, common_1.nonceSize);
+                const checksum = crc32.buf(buff.slice(common_1.cryptHeaderSize)) >>> 0;
+                buff.writeUInt32LE(checksum, common_1.nonceSize);
+                buff = this.block.encrypt(buff);
                 /*
                 for k := range ecc {
                     s.nonce.Fill(ecc[k][:nonceSize])
@@ -316,20 +321,18 @@ class UDPSession extends EventEmitter {
     // packet input stage
     packetInput(data) {
         let decrypted = false;
-        if (this.block != undefined && data.byteLength >= common_1.cryptHeaderSize) {
-            // todo
+        if (this.block && data.byteLength >= common_1.cryptHeaderSize) {
             // 解密
-            /*
-            s.block.Decrypt(data, data)
-            data = data[nonceSize:]
-            checksum := crc32.ChecksumIEEE(data[crcSize:])
-            if checksum == binary.LittleEndian.Uint32(data) {
-                data = data[crcSize:]
-                decrypted = true
-            } else {
-                atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
+            data = this.block.decrypt(data);
+            const checksum = crc32.buf(data.slice(common_1.cryptHeaderSize)) >>> 0;
+            if (checksum === data.readUInt32LE(common_1.nonceSize)) {
+                data = data.slice(common_1.cryptHeaderSize);
+                decrypted = true;
             }
-            */
+            else {
+                // do nothing
+                // crc32 检测未通过
+            }
         }
         else if (this.block == undefined) {
             decrypted = true;
@@ -339,8 +342,6 @@ class UDPSession extends EventEmitter {
         }
     }
     kcpInput(data) {
-        // todo
-        // 收到消息要触发 recv 事件，让外部可以处理
         let kcpInErrors = 0;
         const fecErrs = 0;
         const fecRecovered = 0;
@@ -444,12 +445,14 @@ function newUDPSession(args) {
     sess.block = block;
     sess.recvbuf = Buffer.alloc(common_1.mtuLimit);
     // FEC codec initialization
-    sess.fecDecoder = new fecDecoder_1.FecDecoder(dataShards, parityShards);
-    if (sess.block) {
-        sess.fecEncoder = new fecEncoder_1.FecEncoder(dataShards, parityShards, common_1.cryptHeaderSize);
-    }
-    else {
-        sess.fecEncoder = new fecEncoder_1.FecEncoder(dataShards, parityShards, 0);
+    if (dataShards && parityShards) {
+        sess.fecDecoder = new fecDecoder_1.FecDecoder(dataShards, parityShards);
+        if (sess.block) {
+            sess.fecEncoder = new fecEncoder_1.FecEncoder(dataShards, parityShards, common_1.cryptHeaderSize);
+        }
+        else {
+            sess.fecEncoder = new fecEncoder_1.FecEncoder(dataShards, parityShards, 0);
+        }
     }
     // calculate additional header size introduced by FEC and encryption
     if (sess.block) {
@@ -474,7 +477,7 @@ function newUDPSession(args) {
 }
 // Listen listens for incoming KCP packets addressed to the local address laddr on the network "udp",
 function Listen(port, callback) {
-    return ListenWithOptions(port, null, 0, 0, callback);
+    return ListenWithOptions({ port, callback });
 }
 exports.Listen = Listen;
 // ListenWithOptions listens for incoming KCP packets addressed to the local address laddr on the network "udp" with packet encryption.
@@ -484,7 +487,8 @@ exports.Listen = Listen;
 // 'dataShards', 'parityShards' specify how many parity packets will be generated following the data packets.
 //
 // Check https://github.com/klauspost/reedsolomon for details
-function ListenWithOptions(port, block, dataShards, parityShards, callback) {
+function ListenWithOptions(opts) {
+    const { port, block, dataShards, parityShards, callback } = opts;
     const socket = dgram.createSocket('udp4');
     socket.bind(port);
     socket.on('listening', (err) => {
@@ -514,7 +518,7 @@ function serveConn(block, dataShards, parityShards, conn, ownConn, callback) {
 }
 // Dial connects to the remote address "raddr" on the network "udp" without encryption and FEC
 function Dial(conv, port, host) {
-    return DialWithOptions(conv, port, host, null, 0, 0);
+    return DialWithOptions({ conv, port, host });
 }
 exports.Dial = Dial;
 // DialWithOptions connects to the remote address "raddr" on the network "udp" with packet encryption
@@ -524,7 +528,8 @@ exports.Dial = Dial;
 // 'dataShards', 'parityShards' specify how many parity packets will be generated following the data packets.
 //
 // Check https://github.com/klauspost/reedsolomon for details
-function DialWithOptions(conv, port, host, block, dataShards, parityShards) {
+function DialWithOptions(opts) {
+    const { conv, port, host, dataShards, parityShards, block } = opts;
     const conn = dgram.createSocket('udp4');
     return newUDPSession({
         conv,

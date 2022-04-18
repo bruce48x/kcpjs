@@ -26,6 +26,7 @@
     "typescript": "4.3.5"
   },
   "dependencies": {
-    "@ronomon/reed-solomon": "^6.0.0"
+    "@ronomon/reed-solomon": "^6.0.0",
+    "crc-32": "^1.2.1"
   }
 }
