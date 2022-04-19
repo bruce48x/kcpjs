@@ -2,17 +2,20 @@ import { ListenWithOptions, DialWithOptions } from '../src/session';
 import * as crypto from 'crypto';
 import { AesBlock } from '../src/crypt';
 
-const dataShards = 4;
-const parityShards = 0;
-
 function log(...msg) {
     console.log('[', new Date().toISOString(), ']', ...msg);
 }
 
+// 连接信息
 const host = '127.0.0.1';
 const port = 22333;
 const conv = 255;
 
+// fec 前向纠错
+const dataShards = 4;
+const parityShards = 1;
+
+// 加密
 const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
 const key = crypto.randomBytes(128 / 8);
 const iv = crypto.randomBytes(12);
