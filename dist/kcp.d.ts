@@ -111,6 +111,5 @@ export declare class Kcp {
     peekSize(): number;
     getWaitSnd(): number;
     setReserveBytes(len: number): boolean;
-    releaseTX(): void;
 }
 export {};

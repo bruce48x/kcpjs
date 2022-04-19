@@ -9,16 +9,15 @@ import * as crypto from 'crypto';
 import * as crc32 from 'crc-32';
 import { CryptBlock } from 'crypt';
 
-function addrToString(rinfo: dgram.RemoteInfo) {
-    return `${rinfo.address}:${rinfo.port}`;
+function addrToString(host: string, port: number): string;
+function addrToString(rinfo: dgram.RemoteInfo): string;
+function addrToString(arg1: dgram.RemoteInfo | string, arg2?: number): string {
+    if (typeof arg1 === 'string') {
+        return `${arg1}:${arg2}`;
+    } else {
+        return `${arg1.address}:${arg1.port}`;
+    }
 }
-
-// todo 这两个东西应该如何传输
-// const key = crypto.randomBytes(128/8);
-// The length of the initialization vector (iv) N must be between 7 and 13 bytes (7 ≤ N ≤ 13).
-// const iv = crypto.randomBytes(12);
-// The length of the plaintext is limited to 2 ** (8 * (15 - N)) bytes.
-// (Min: 65536 bytes when IV length is 13 bytes, Max: 18446744073709551616 bytes when IV length is 7 bytes)
 
 export class Listener {
     block: CryptBlock; // block encryption
@@ -28,13 +27,6 @@ export class Listener {
     ownConn: boolean; // true if we created conn internally, false if provided by caller
 
     sessions: { [key: string]: UDPSession }; // all sessions accepted by this Listener
-    sessionLock: any;
-
-    dieOnce: any; // sync.Once
-
-    // socket error handling
-    socketReadError: any; //atomic.Value
-    socketReadErrorOnce: any; //sync.Once
 
     callback: ListenCallback;
 
@@ -55,9 +47,9 @@ export class Listener {
             decrypted = true;
         }
 
-        const addr = addrToString(rinfo);
+        const key = addrToString(rinfo);
         if (decrypted && data.byteLength >= IKCP_OVERHEAD) {
-            let sess = this.sessions[addr];
+            let sess = this.sessions[key];
             let conv = 0;
             let sn = 0;
             let convRecovered = false;
@@ -103,21 +95,29 @@ export class Listener {
                     ownConn: false,
                     block: this.block,
                 });
-                this.sessions[addr] = sess;
+                sess.key = key;
+                this.sessions[key] = sess;
                 this.callback(sess);
                 sess.kcpInput(data);
             }
         }
     }
 
-    // Close stops listening on the UDP address, and closes the socket
-    Close(): any {
-        this.conn.close();
+    /**
+     * 停止 UDP 监听，关闭 socket
+     */
+    close(): any {
+        if (this.ownConn) {
+            this.conn.close();
+        }
     }
 
-    // Addr returns the listener's network address, The Addr returned is shared by all invocations of Addr, so do not modify it.
-    Addr(): any {
-        return this.conn.address;
+    closeSession(key: string): boolean {
+        if (this.sessions[key]) {
+            delete this.sessions[key];
+            return true;
+        }
+        return false;
     }
 
     monitor() {
@@ -128,6 +128,7 @@ export class Listener {
 }
 
 export class UDPSession extends EventEmitter {
+    key: string;
     conn: dgram.Socket; // the underlying packet connection
     ownConn: boolean; // true if we created conn internally, false if provided by caller
     kcp: Kcp; // KCP ARQ protocol
@@ -150,10 +151,6 @@ export class UDPSession extends EventEmitter {
     headerSize: number; // the header size additional to a KCP frame
     ackNoDelay: boolean; // send ack immediately for each incoming packet(testing purpose)
     writeDelay: boolean; // delay kcp.flush() for Write() for bulk transfer
-    dup: number; // duplicate udp packets(testing purpose)
-
-    // nonce generator
-    nonce: any; // Entropy
 
     constructor() {
         super();
@@ -172,35 +169,6 @@ export class UDPSession extends EventEmitter {
         this.headerSize = 0; // the header size additional to a KCP frame
         this.ackNoDelay = false; // send ack immediately for each incoming packet(testing purpose)
         this.writeDelay = false; // delay kcp.flush() for Write() for bulk transfer
-        this.dup = 0; // duplicate udp packets(testing purpose)
-    }
-
-    read(): void {
-        let bufsize = 0; // 每次读的包的长度
-        let allsize = 0; // 总共读的包的长度
-        let buflen = 0;
-        let len = 0;
-        while (true) {
-            bufsize = this.kcp.peekSize();
-            if (bufsize <= 0) {
-                break;
-            }
-            allsize += bufsize;
-            if (allsize > this.recvbuf.byteLength) {
-                this.recvbuf = Buffer.concat([this.recvbuf, Buffer.alloc(allsize - this.recvbuf.byteLength)]);
-            }
-            buflen = this.kcp.recv(this.recvbuf);
-            if (buflen <= 0) {
-                break;
-            }
-            len += buflen;
-            if (this.kcp.stream === 0) {
-                break;
-            }
-        }
-        if (len > 0) {
-            this.emit('recv', [this.recvbuf.slice(0, len)]);
-        }
     }
 
     // Write implements net.Conn
@@ -211,38 +179,10 @@ export class UDPSession extends EventEmitter {
     // WriteBuffers write a vector of byte slices to the underlying connection
     writeBuffers(v: Buffer[]): number {
         let n = 0;
-        /*
-        while (true) {
-            // make sure write do not overflow the max sliding window on both side
-            let waitsnd = this.kcp.getWaitSnd();
-            if (waitsnd < this.kcp.snd_wnd && waitsnd < this.kcp.rmt_wnd) {
-                for (let b of v) {
-                    n += b.byteLength;
-                    while (true) {
-                        if (b.byteLength <= this.kcp.mss) {
-                            this.kcp.send(b);
-                            break;
-                        } else {
-                            this.kcp.send(b.slice(0, this.kcp.mss));
-                            b = b.slice(this.kcp.mss);
-                        }
-                    }
-                }
-
-                waitsnd = this.kcp.getWaitSnd();
-                if (waitsnd >= this.kcp.snd_wnd || waitsnd >= this.kcp.rmt_wnd || !this.writeDelay) {
-                    this.kcp.flush(false);
-                    this.uncork();
-                }
-                return n;
-            }
-        }
-        */
         for (const b of v) {
             n += b.byteLength;
             this.kcp.send(b);
         }
-        this.kcp.update();
         return n;
     }
 
@@ -251,21 +191,23 @@ export class UDPSession extends EventEmitter {
         // try best to send all queued messages
         this.kcp.flush(false);
         // release pending segments
-        this.kcp.releaseTX();
-        if (this.fecDecoder !== undefined) {
-            // this.fecDecoder.release()
+        this.kcp.release();
+
+        // 释放 fec
+        if (this.fecDecoder) {
+            this.fecDecoder.release();
+            this.fecDecoder = undefined;
         }
-    }
+        if (this.fecEncoder) {
+            this.fecEncoder.release();
+            this.fecEncoder = undefined;
+        }
 
-    // LocalAddr returns the local network address. The Addr returned is shared by all invocations of LocalAddr, so do not modify it.
-    localAddr(): any {
-        // return this.conn.LocalAddr()
-        return {};
-    }
-
-    // RemoteAddr returns the remote network address. The Addr returned is shared by all invocations of RemoteAddr, so do not modify it.
-    remoteAddr(): any {
-        return `${this.host}:${this.port}`;
+        if (this.listener) {
+            this.listener.closeSession(this.key);
+        } else if (this.ownConn) {
+            this.conn.close();
+        }
     }
 
     // SetWriteDelay delays write for bulk transfer until the next update interval
@@ -416,8 +358,6 @@ export class UDPSession extends EventEmitter {
 
     kcpInput(data: Buffer) {
         let kcpInErrors = 0;
-        const fecErrs = 0;
-        const fecRecovered = 0;
         let fecParityShards = 0;
 
         const fpkt = new FecPacket(data);
@@ -453,20 +393,6 @@ export class UDPSession extends EventEmitter {
                         }
                     }
 
-                    /*
-                    // to notify the readers to receive the data
-                    const n = this.kcp.peekSize();
-                    if (n > 0) {
-                        this.notifyReadEvent();
-                    }
-                    // to notify the writers
-                    const waitsnd = this.kcp.getWaitSnd();
-                    if (waitsnd < this.kcp.snd_wnd && waitsnd < this.kcp.rmt_wnd) {
-                        this.notifyWriteEvent();
-                    }
-
-                    this.uncork();
-                    */
                     const size = this.kcp.peekSize();
                     if (size > 0) {
                         const buffer = Buffer.alloc(size);
@@ -479,17 +405,6 @@ export class UDPSession extends EventEmitter {
             }
         } else {
             this.kcp.input(data, true, this.ackNoDelay);
-            /*
-            const n = this.kcp.peekSize();
-            if (n > 0) {
-                this.notifyReadEvent();
-            }
-            const waitsnd = this.kcp.getWaitSnd();
-            if (waitsnd < this.kcp.snd_wnd && waitsnd < this.kcp.rmt_wnd) {
-                this.notifyWriteEvent();
-            }
-            this.uncork();
-            */
             const size = this.kcp.peekSize();
             if (size > 0) {
                 const buffer = Buffer.alloc(size);
@@ -524,7 +439,6 @@ function newUDPSession(args: {
     const sess = new UDPSession();
     sess.port = port;
     sess.host = host;
-    sess.nonce = {};
     sess.conn = conn;
     sess.ownConn = ownConn;
     sess.listener = listener;

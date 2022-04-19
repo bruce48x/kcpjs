@@ -29,7 +29,7 @@ export class FecEncoder {
     private _cacheBlock: CacheBlock;
 
     // RS encoder
-    private readonly _context: any;
+    private _context: any;
 
     constructor(dataShards: number, parityShards: number, offset: number) {
         if (dataShards <= 0 || parityShards <= 0) {
@@ -155,5 +155,10 @@ export class FecEncoder {
                 callback(error, { data: [buff], parity });
             },
         );
+    }
+
+    release() {
+        this._cacheBlock = undefined;
+        this._context = undefined;
     }
 }

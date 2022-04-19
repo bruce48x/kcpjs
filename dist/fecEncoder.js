@@ -105,5 +105,9 @@ class FecEncoder {
             callback(error, { data: [buff], parity });
         });
     }
+    release() {
+        this._cacheBlock = undefined;
+        this._context = undefined;
+    }
 }
 exports.FecEncoder = FecEncoder;

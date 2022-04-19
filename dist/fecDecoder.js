@@ -131,5 +131,9 @@ class FecDecoder {
             callback(error, { data, parity });
         });
     }
+    release() {
+        this._cacheBlockMap = undefined;
+        this._context = undefined;
+    }
 }
 exports.FecDecoder = FecDecoder;

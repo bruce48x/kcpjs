@@ -27,7 +27,7 @@ export class FecDecoder {
     private _cacheBlockMap: { [group: string]: CacheBlock };
 
     // RS decoder
-    private readonly _context: any;
+    private _context: any;
 
     constructor(private readonly _dataShards: number, private readonly _parityShards: number) {
         this._shardSize = this._dataShards + this._parityShards;
@@ -162,5 +162,10 @@ export class FecDecoder {
                 callback(error, { data, parity });
             },
         );
+    }
+
+    release() {
+        this._cacheBlockMap = undefined;
+        this._context = undefined;
     }
 }

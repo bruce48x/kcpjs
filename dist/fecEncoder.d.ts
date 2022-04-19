@@ -10,11 +10,12 @@ export declare class FecEncoder {
     private readonly _headerOffset;
     private readonly _payloadOffset;
     private _cacheBlock;
-    private readonly _context;
+    private _context;
     constructor(dataShards: number, parityShards: number, offset: number);
     private markData;
     private markParity;
     encodeAsync(buff: Buffer): Promise<EncodeResult>;
     encode(buff: Buffer, callback: EncodeCallback): void;
     private _encode;
+    release(): void;
 }

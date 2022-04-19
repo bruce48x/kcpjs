@@ -1110,24 +1110,4 @@ export class Kcp {
         this.mss = this.mtu - IKCP_OVERHEAD - len;
         return true;
     }
-
-    // Release all cached outgoing segments
-    releaseTX() {
-        /*
-	for k := range kcp.snd_queue {
-		if kcp.snd_queue[k].data != nil {
-			xmitBuf.Put(kcp.snd_queue[k].data)
-		}
-	}
-	for k := range kcp.snd_buf {
-		if kcp.snd_buf[k].data != nil {
-			xmitBuf.Put(kcp.snd_buf[k].data)
-		}
-	}
-	kcp.snd_queue = nil
-	kcp.snd_buf = nil
-    */
-        this.snd_queue = undefined;
-        this.snd_buf = undefined;
-    }
 }

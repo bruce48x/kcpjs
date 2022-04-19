@@ -14,17 +14,17 @@ export declare class Listener {
     sessions: {
         [key: string]: UDPSession;
     };
-    sessionLock: any;
-    dieOnce: any;
-    socketReadError: any;
-    socketReadErrorOnce: any;
     callback: ListenCallback;
     private packetInput;
-    Close(): any;
-    Addr(): any;
+    /**
+     * 停止 UDP 监听，关闭 socket
+     */
+    close(): any;
+    closeSession(key: string): boolean;
     monitor(): void;
 }
 export declare class UDPSession extends EventEmitter {
+    key: string;
     conn: dgram.Socket;
     ownConn: boolean;
     kcp: Kcp;
@@ -39,15 +39,10 @@ export declare class UDPSession extends EventEmitter {
     headerSize: number;
     ackNoDelay: boolean;
     writeDelay: boolean;
-    dup: number;
-    nonce: any;
     constructor();
-    read(): void;
     write(b: Buffer): number;
     writeBuffers(v: Buffer[]): number;
     close(): void;
-    localAddr(): any;
-    remoteAddr(): any;
     setWriteDelay(delay: boolean): void;
     setWindowSize(sndwnd: number, rcvwnd: number): void;
     setMtu(mtu: number): boolean;

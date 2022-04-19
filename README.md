@@ -4,9 +4,21 @@
 
 参考 kcp-go 来实现
 
-# 运行示例
+相比 [node-kcp-x](https://github.com/bruce48x/node-kcp) 多了两个特性
+
+1: FEC 前向纠错
+
+2: 加密
+
+# 示例1
 ```sh
 ts-node examples/echo.ts
+```
+
+# 示例2
+```sh
+ts-node examples/server.ts
+ts-node examples/client.ts
 ```
 
 # API
