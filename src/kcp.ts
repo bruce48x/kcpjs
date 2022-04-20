@@ -488,7 +488,7 @@ export class Kcp {
             }
 
             inSegs++;
-            data = data.slice(IKCP_OVERHEAD + length);
+            data = data.slice(length);
         }
 
         // update rtt with the latest ts

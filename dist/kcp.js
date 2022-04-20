@@ -349,7 +349,7 @@ class Kcp {
                 return -3;
             }
             inSegs++;
-            data = data.slice(exports.IKCP_OVERHEAD + length);
+            data = data.slice(length);
         }
         // update rtt with the latest ts
         // ignore the FEC packet

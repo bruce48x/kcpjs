@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 
 export function log(...msg) {
-    console.log('[', new Date().toISOString(), ']', ...msg);
+    console.log(`[${new Date().toISOString()}]`, ...msg);
 }
 
 // 连接信息

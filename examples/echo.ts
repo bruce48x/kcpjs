@@ -1,10 +1,7 @@
 import { ListenWithOptions, DialWithOptions } from '../src/session';
 import * as crypto from 'crypto';
 import { AesBlock } from '../src/crypt';
-
-function log(...msg) {
-    console.log('[', new Date().toISOString(), ']', ...msg);
-}
+import { log } from './common';
 
 // 连接信息
 const host = '127.0.0.1';
