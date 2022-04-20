@@ -4,7 +4,7 @@ import EventEmitter = require('events');
 import { FecDecoder } from './fecDecoder';
 import { FecEncoder } from './fecEncoder';
 import { Kcp } from './kcp';
-import { CryptBlock } from 'crypt';
+import { CryptBlock } from './crypt';
 export declare class Listener {
     block: CryptBlock;
     dataShards: number;

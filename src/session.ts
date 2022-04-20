@@ -7,7 +7,7 @@ import { FecPacket } from './fecPacket';
 import { IKCP_OVERHEAD, IKCP_SN_OFFSET, Kcp } from './kcp';
 import * as crypto from 'crypto';
 import * as crc32 from 'crc-32';
-import { CryptBlock } from 'crypt';
+import { CryptBlock } from './crypt';
 
 function addrToString(host: string, port: number): string;
 function addrToString(rinfo: dgram.RemoteInfo): string;
