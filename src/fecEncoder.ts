@@ -122,7 +122,7 @@ export class FecEncoder {
         for (const buff of cacheBlock.dataArr) {
             const dataBuff = buff.slice(this._payloadOffset);
             if (dataBuff.byteLength === shardSize) {
-                dataArr.push(buff);
+                dataArr.push(dataBuff);
             } else {
                 dataArr.push(Buffer.concat([dataBuff, Buffer.alloc(shardSize - dataBuff.byteLength)]));
             }

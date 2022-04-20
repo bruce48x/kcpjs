@@ -491,7 +491,6 @@ export function Listen(port: number, callback: ListenCallback): any {
 export interface ListenOptions {
     port: number;
     block?: CryptBlock;
-    keyLength?: number;
     dataShards?: number;
     parityShards?: number;
     callback: ListenCallback;

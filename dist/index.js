@@ -12,3 +12,4 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./session"), exports);
 __exportStar(require("./kcp"), exports);
+__exportStar(require("./crypt"), exports);
