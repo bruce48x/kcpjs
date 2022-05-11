@@ -255,7 +255,6 @@ export class UDPSession extends EventEmitter {
     // 1. FEC packet generation
     // 2. CRC32 integrity
     // 3. Encryption
-    // 4. TxQueue
     output(buf: Buffer) {
         const doOutput = (buff: Buffer) => {
             // 2&3. crc32 & encryption
@@ -264,15 +263,6 @@ export class UDPSession extends EventEmitter {
                 const checksum = crc32.buf(buff.slice(cryptHeaderSize)) >>> 0;
                 buff.writeUInt32LE(checksum, nonceSize);
                 buff = this.block.encrypt(buff);
-
-                /*
-                for k := range ecc {
-                    s.nonce.Fill(ecc[k][:nonceSize])
-                    checksum := crc32.ChecksumIEEE(ecc[k][cryptHeaderSize:])
-                    binary.LittleEndian.PutUint32(ecc[k][nonceSize:], checksum)
-                    s.block.Encrypt(ecc[k], ecc[k])
-                }
-                */
             }
             this.conn.send(buff, this.port, this.host);
         };

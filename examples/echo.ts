@@ -30,7 +30,6 @@ const listener = ListenWithOptions({
         });
     },
 });
-// log('listener.address', listener.conn.address());
 
 // client
 const session = DialWithOptions({
