@@ -37,7 +37,7 @@ class FecDecoder {
         const type = inData.flag();
         const group = Math.floor(seqId / this._shardSize);
         if (undefined === this._cacheBlockMap[group]) {
-            this._cacheBlockMap[group] = common_1.initCacheBlock(this._dataShards, this._parityShards);
+            this._cacheBlockMap[group] = (0, common_1.initCacheBlock)(this._dataShards, this._parityShards);
         }
         const cacheBlock = this._cacheBlockMap[group];
         if (type === common_1.typeData) {
@@ -84,7 +84,7 @@ class FecDecoder {
         const bufferOffset = 0;
         const parityOffset = 0;
         // 把数据包补足为长度相同的 buffer
-        const shardSize = common_1.multiple8(cacheBlock.maxSize);
+        const shardSize = (0, common_1.multiple8)(cacheBlock.maxSize);
         const dataArr = [];
         for (let i = 0; i < this._dataShards; i++) {
             const buff = cacheBlock.dataArr[i]?.slice(common_1.fecHeaderSize);

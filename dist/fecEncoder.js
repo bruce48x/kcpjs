@@ -17,7 +17,7 @@ class FecEncoder {
         this._headerOffset = offset;
         this._payloadOffset = this._headerOffset + common_1.fecHeaderSize;
         this._context = ReedSolomon.create(dataShards, parityShards);
-        this._cacheBlock = common_1.initCacheBlock(dataShards, parityShards);
+        this._cacheBlock = (0, common_1.initCacheBlock)(dataShards, parityShards);
         this._shardCount = 0;
         this._next = 0;
     }
@@ -65,7 +65,7 @@ class FecEncoder {
         if (this._shardCount === this._dataShards) {
             // encoding
             const cacheBlock = this._cacheBlock;
-            this._cacheBlock = common_1.initCacheBlock(this._dataShards, this._parityShards);
+            this._cacheBlock = (0, common_1.initCacheBlock)(this._dataShards, this._parityShards);
             this._encode(cacheBlock, buff, callback);
             // counters resetting
             this._shardCount = 0;
@@ -79,7 +79,7 @@ class FecEncoder {
         // const bufferOffset = this._headerOffset;
         const parityOffset = 0;
         // 把数据包补足为长度相同的 buffer
-        const shardSize = common_1.multiple8(cacheBlock.maxSize);
+        const shardSize = (0, common_1.multiple8)(cacheBlock.maxSize);
         const dataArr = [];
         for (const buff of cacheBlock.dataArr) {
             const dataBuff = buff.slice(this._payloadOffset);

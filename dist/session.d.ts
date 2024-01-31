@@ -1,4 +1,6 @@
 /// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
 import * as dgram from 'dgram';
 import EventEmitter = require('events');
 import { FecDecoder } from './fecDecoder';
@@ -59,7 +61,7 @@ export declare class UDPSession extends EventEmitter {
     kcpInput(data: Buffer): void;
     readLoop(): void;
 }
-export declare type ListenCallback = (session: UDPSession) => void;
+export type ListenCallback = (session: UDPSession) => void;
 export declare function Listen(port: number, callback: ListenCallback): any;
 export interface ListenOptions {
     port: number;

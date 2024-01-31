@@ -1,4 +1,5 @@
 /// <reference types="node" />
+/// <reference types="node" />
 import * as crypto from 'crypto';
 export interface CryptBlock {
     encrypt: (plainData: Buffer) => Buffer;

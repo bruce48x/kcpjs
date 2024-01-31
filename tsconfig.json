@@ -4,14 +4,13 @@
             "./node_modules/@types"
         ],
         "types": [
-            "node",
-            "jest"
+            "node"
         ],
         "module": "commonjs", //指定生成哪个模块系统代码
         "target": "es2020",
         "lib": [
             "es2020",
-            "esnext.asynciterable"
+            "esnext"
         ],
         "declaration": true,                   /* Generates corresponding '.d.ts' file. */
         "noImplicitAny": false, //在表达式和声明上有隐含的'any'类型时报错。
@@ -23,10 +22,8 @@
         "experimentalDecorators": true,
         "emitDecoratorMetadata": true,
         "newLine": "LF", // 保持换行都是 /n
-        "charset": "utf8",
         "moduleResolution": "node",
-        "preserveConstEnums": true,
-        "watch": false //在监视模式下运行编译器。会监视输出文件，在它们改变时重新编译。
+        "preserveConstEnums": true
     },
     "include": [
         "./**/*.ts"
@@ -36,10 +33,5 @@
         "**/*.d.ts",
         "./examples/**/*.*",
         "./dist/**/*.*"
-    ],
-    "typeAcquisition": {
-        "include": [
-            "jest"
-        ],
-    }
+    ]
 }

@@ -29,7 +29,10 @@ export class FecDecoder {
     // RS decoder
     private _context: any;
 
-    constructor(private readonly _dataShards: number, private readonly _parityShards: number) {
+    constructor(
+        private readonly _dataShards: number,
+        private readonly _parityShards: number,
+    ) {
         this._shardSize = this._dataShards + this._parityShards;
         this._rxlimit = rxFECMulti * this._shardSize;
         this._context = ReedSolomon.create(this._dataShards, this._parityShards);

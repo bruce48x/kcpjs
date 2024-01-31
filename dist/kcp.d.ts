@@ -42,7 +42,7 @@ declare class AckItem {
     sn: number;
     ts: number;
 }
-declare type output_callback = (buf: Buffer, len: number, user: any) => void;
+type output_callback = (buf: Buffer, len: number, user: any) => void;
 export declare class Kcp {
     conv: number;
     mtu: number;

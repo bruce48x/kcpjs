@@ -22,6 +22,6 @@ export interface EncodeResult {
     data?: Buffer[];
     parity?: Buffer[];
 }
-export declare type EncodeCallback = (err: any, result: EncodeResult) => void;
+export type EncodeCallback = (err: any, result: EncodeResult) => void;
 export declare function multiple8(len: number): number;
 export declare function initCacheBlock(dataShards: number, parityShards: number): CacheBlock;

@@ -1,14 +1,14 @@
 import { ListenWithOptions } from '../src/session';
-import { AesBlock } from '../src/crypt';
+import { AesBlock, CryptBlock } from '../src/crypt';
 import { port, algorithm, key, iv, dataShards, parityShards } from './common';
 
-let block = undefined;
+let block: CryptBlock | undefined = undefined;
 if (algorithm && key && iv) {
     block = new AesBlock(algorithm, key, iv);
 }
 
 // server
-const listener = ListenWithOptions({
+ListenWithOptions({
     port,
     block,
     dataShards,

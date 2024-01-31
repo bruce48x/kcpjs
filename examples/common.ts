@@ -13,10 +13,11 @@ export const conv = 255;
 // 两个参数的任意一个为0，则不启用 fec
 export const dataShards = 4;
 export const parityShards = 1;
+// export const parityShards = 0;
 
 // 加密
 // 3个参数的任意一个为空，则不启用加密
 export const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
 export const key = 'aabbccddeeffgghh'; // crypto.randomBytes(128 / 8);
 export const iv = 'aabbccddeeff'; // crypto.randomBytes(12);
-// export const iv = '';
+// export const iv = ''; // 不启用加密
