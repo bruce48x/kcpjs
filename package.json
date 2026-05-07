@@ -3,6 +3,10 @@
   "version": "1.0.11",
   "description": "kcpjs = kcpgo_to_js(kcp)",
   "homepage": "https://github.com/bruce48x/kcpjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bruce48x/kcpjs.git"
+  },
   "main": "./dist/index",
   "types": "./dist/index",
   "scripts": {
