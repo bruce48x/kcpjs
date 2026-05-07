@@ -80,17 +80,12 @@ class FecEncoder {
         const parityOffset = 0;
         // 把数据包补足为长度相同的 buffer
         const shardSize = (0, common_1.multiple8)(cacheBlock.maxSize);
-        const dataArr = [];
-        for (const buff of cacheBlock.dataArr) {
+        const encoderBuffer = Buffer.alloc(shardSize * this._dataShards);
+        for (let i = 0; i < cacheBlock.dataArr.length; i++) {
+            const buff = cacheBlock.dataArr[i];
             const dataBuff = buff.slice(this._payloadOffset);
-            if (dataBuff.byteLength === shardSize) {
-                dataArr.push(dataBuff);
-            }
-            else {
-                dataArr.push(Buffer.concat([dataBuff, Buffer.alloc(shardSize - dataBuff.byteLength)]));
-            }
+            dataBuff.copy(encoderBuffer, i * shardSize, 0, Math.min(dataBuff.byteLength, shardSize));
         }
-        const encoderBuffer = Buffer.concat(dataArr);
         const bufferSize = encoderBuffer.byteLength;
         const paritySize = shardSize * this._parityShards;
         const encoderParity = Buffer.alloc(paritySize);
@@ -98,7 +93,8 @@ class FecEncoder {
         ReedSolomon.encode(this._context, sources, targets, encoderBuffer, bufferOffset, bufferSize, encoderParity, parityOffset, paritySize, (error) => {
             const parity = [];
             for (let i = 0; i < this._parityShards; i++) {
-                const p = Buffer.concat([Buffer.alloc(6), encoderParity.slice(i * shardSize, (1 + i) * shardSize)]);
+                const p = Buffer.alloc(common_1.fecHeaderSize + shardSize);
+                encoderParity.copy(p, common_1.fecHeaderSize, i * shardSize, (i + 1) * shardSize);
                 this.markParity(p);
                 parity.push(p);
             }

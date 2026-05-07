@@ -118,17 +118,13 @@ export class FecEncoder {
 
         // 把数据包补足为长度相同的 buffer
         const shardSize = multiple8(cacheBlock.maxSize);
-        const dataArr: Buffer[] = [];
-        for (const buff of cacheBlock.dataArr) {
+        const encoderBuffer = Buffer.alloc(shardSize * this._dataShards);
+        for (let i = 0; i < cacheBlock.dataArr.length; i++) {
+            const buff = cacheBlock.dataArr[i];
             const dataBuff = buff.slice(this._payloadOffset);
-            if (dataBuff.byteLength === shardSize) {
-                dataArr.push(dataBuff);
-            } else {
-                dataArr.push(Buffer.concat([dataBuff, Buffer.alloc(shardSize - dataBuff.byteLength)]));
-            }
+            dataBuff.copy(encoderBuffer, i * shardSize, 0, Math.min(dataBuff.byteLength, shardSize));
         }
 
-        const encoderBuffer: Buffer = Buffer.concat(dataArr);
         const bufferSize = encoderBuffer.byteLength;
         const paritySize = shardSize * this._parityShards;
         const encoderParity: Buffer = Buffer.alloc(paritySize);
@@ -148,7 +144,8 @@ export class FecEncoder {
             (error: any) => {
                 const parity: Buffer[] = [];
                 for (let i = 0; i < this._parityShards; i++) {
-                    const p = Buffer.concat([Buffer.alloc(6), encoderParity.slice(i * shardSize, (1 + i) * shardSize)]);
+                    const p = Buffer.alloc(fecHeaderSize + shardSize);
+                    encoderParity.copy(p, fecHeaderSize, i * shardSize, (i + 1) * shardSize);
                     this.markParity(p);
                     parity.push(p);
                 }

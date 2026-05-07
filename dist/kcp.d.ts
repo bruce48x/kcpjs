@@ -21,6 +21,7 @@ export declare const IKCP_THRESH_MIN = 2;
 export declare const IKCP_PROBE_INIT = 7000;
 export declare const IKCP_PROBE_LIMIT = 120000;
 export declare const IKCP_SN_OFFSET = 12;
+export declare const IKCP_ACKLIST_LIMIT: number;
 declare class Segment {
     conv: number;
     cmd: number;
@@ -86,6 +87,8 @@ export declare class Kcp {
     user: any;
     output: output_callback;
     reserved: number;
+    released: boolean;
+    maxAckList: number;
     constructor(conv: number, user: any);
     private _delSegment;
     setWndSize(sndwnd: number, rcvwnd: number): number;

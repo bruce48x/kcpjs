@@ -18,8 +18,11 @@ class FecDecoder {
         this._parityShards = _parityShards;
         this._shardSize = this._dataShards + this._parityShards;
         this._rxlimit = common_1.rxFECMulti * this._shardSize;
+        this._maxCacheBlocks = Math.max(1, Math.ceil(this._rxlimit / this._shardSize));
         this._context = ReedSolomon.create(this._dataShards, this._parityShards);
-        this._cacheBlockMap = {};
+        this._cacheBlockMap = new Map();
+        this._completedGroups = new Set();
+        this._latestGroup = -1;
     }
     decodeAsync(inData) {
         return new Promise((resolve, reject) => {
@@ -36,10 +39,18 @@ class FecDecoder {
         const seqId = inData.seqId();
         const type = inData.flag();
         const group = Math.floor(seqId / this._shardSize);
-        if (undefined === this._cacheBlockMap[group]) {
-            this._cacheBlockMap[group] = (0, common_1.initCacheBlock)(this._dataShards, this._parityShards);
+        if (!this.trackGroup(group)) {
+            callback(undefined, {});
+            return;
         }
-        const cacheBlock = this._cacheBlockMap[group];
+        if (this._completedGroups.has(group)) {
+            callback(undefined, {});
+            return;
+        }
+        if (!this._cacheBlockMap.has(group)) {
+            this._cacheBlockMap.set(group, (0, common_1.initCacheBlock)(this._dataShards, this._parityShards));
+        }
+        const cacheBlock = this._cacheBlockMap.get(group);
         if (type === common_1.typeData) {
             const idx = seqId % this._shardSize;
             if (undefined === cacheBlock.dataArr[idx]) {
@@ -69,70 +80,90 @@ class FecDecoder {
             }
         }
         if (cacheBlock.numDataShards < this._dataShards && cacheBlock.numShards >= this._dataShards) {
-            this._decode(cacheBlock, callback);
+            this._decode(cacheBlock, (err, result) => {
+                this.completeGroup(group);
+                callback(err, result);
+            });
         }
         else {
             if (type === common_1.typeData) {
-                callback(undefined, { data: [inData.buff.slice(common_1.fecHeaderSize)] });
+                const result = { data: [inData.buff.slice(common_1.fecHeaderSize)] };
+                if (cacheBlock.numDataShards === this._dataShards) {
+                    this.completeGroup(group);
+                }
+                callback(undefined, result);
             }
             else {
                 callback(undefined, {});
             }
         }
     }
+    trackGroup(group) {
+        if (group > this._latestGroup) {
+            this._latestGroup = group;
+        }
+        const minGroup = this._latestGroup - this._maxCacheBlocks + 1;
+        if (group < minGroup) {
+            return false;
+        }
+        for (const cachedGroup of this._cacheBlockMap.keys()) {
+            if (cachedGroup < minGroup) {
+                this._cacheBlockMap.delete(cachedGroup);
+            }
+        }
+        for (const completedGroup of this._completedGroups) {
+            if (completedGroup < minGroup) {
+                this._completedGroups.delete(completedGroup);
+            }
+        }
+        return true;
+    }
+    completeGroup(group) {
+        this._cacheBlockMap.delete(group);
+        this._completedGroups.add(group);
+        this.trackGroup(this._latestGroup);
+    }
     _decode(cacheBlock, callback) {
         const bufferOffset = 0;
         const parityOffset = 0;
         // 把数据包补足为长度相同的 buffer
         const shardSize = (0, common_1.multiple8)(cacheBlock.maxSize);
-        const dataArr = [];
+        const encoderBuffer = Buffer.alloc(shardSize * this._dataShards);
+        const missingData = [];
         for (let i = 0; i < this._dataShards; i++) {
             const buff = cacheBlock.dataArr[i]?.slice(common_1.fecHeaderSize);
             if (undefined === buff) {
-                dataArr.push(Buffer.alloc(shardSize));
-            }
-            else if (buff.byteLength === shardSize) {
-                dataArr.push(buff);
+                missingData.push(i);
             }
             else {
-                dataArr.push(Buffer.concat([buff, Buffer.alloc(shardSize - buff.byteLength)]));
+                buff.copy(encoderBuffer, i * shardSize, 0, Math.min(buff.byteLength, shardSize));
             }
         }
-        const parityArr = [];
+        const encoderParity = Buffer.alloc(shardSize * this._parityShards);
         for (let i = 0; i < this._parityShards; i++) {
             const buff = cacheBlock.parityArr[i]?.slice(common_1.fecHeaderSize);
-            if (undefined === buff) {
-                parityArr.push(Buffer.alloc(shardSize));
-            }
-            else if (buff.byteLength === shardSize) {
-                parityArr.push(buff);
-            }
-            else {
-                parityArr.push(Buffer.concat([buff, Buffer.alloc(shardSize - buff.byteLength)]));
+            if (undefined !== buff) {
+                buff.copy(encoderParity, i * shardSize, 0, Math.min(buff.byteLength, shardSize));
             }
         }
-        const encoderBuffer = Buffer.concat(dataArr);
         const bufferSize = encoderBuffer.byteLength - bufferOffset;
-        const encoderParity = Buffer.concat(parityArr);
         const paritySize = encoderParity.byteLength - parityOffset;
         const { sources, targets } = cacheBlock;
         ReedSolomon.encode(this._context, sources, targets, encoderBuffer, bufferOffset, bufferSize, encoderParity, parityOffset, paritySize, (error) => {
-            // Parity shards now contain parity data.
-            const data = [];
-            for (let i = 0; i < this._dataShards; i++) {
-                const d = encoderBuffer.slice(i * shardSize, (1 + i) * shardSize);
-                data.push(d);
+            if (error) {
+                callback(error, {});
+                return;
             }
-            const parity = [];
-            for (let i = 0; i < this._parityShards; i++) {
-                const p = encoderParity.slice(i * shardSize, (1 + i) * shardSize);
-                parity.push(p);
+            const recovered = [];
+            for (const i of missingData) {
+                recovered.push(encoderBuffer.slice(i * shardSize, (i + 1) * shardSize));
             }
-            callback(error, { data, parity });
+            callback(undefined, { parity: recovered });
         });
     }
     release() {
         this._cacheBlockMap = undefined;
+        this._completedGroups = undefined;
         this._context = undefined;
     }
 }

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Kcp = exports.IKCP_SN_OFFSET = exports.IKCP_PROBE_LIMIT = exports.IKCP_PROBE_INIT = exports.IKCP_THRESH_MIN = exports.IKCP_THRESH_INIT = exports.IKCP_DEADLINK = exports.IKCP_OVERHEAD = exports.IKCP_INTERVAL = exports.IKCP_ACK_FAST = exports.IKCP_MTU_DEF = exports.IKCP_WND_RCV = exports.IKCP_WND_SND = exports.IKCP_ASK_TELL = exports.IKCP_ASK_SEND = exports.IKCP_CMD_WINS = exports.IKCP_CMD_WASK = exports.IKCP_CMD_ACK = exports.IKCP_CMD_PUSH = exports.IKCP_RTO_MAX = exports.IKCP_RTO_DEF = exports.IKCP_RTO_MIN = exports.IKCP_RTO_NDL = void 0;
+exports.Kcp = exports.IKCP_ACKLIST_LIMIT = exports.IKCP_SN_OFFSET = exports.IKCP_PROBE_LIMIT = exports.IKCP_PROBE_INIT = exports.IKCP_THRESH_MIN = exports.IKCP_THRESH_INIT = exports.IKCP_DEADLINK = exports.IKCP_OVERHEAD = exports.IKCP_INTERVAL = exports.IKCP_ACK_FAST = exports.IKCP_MTU_DEF = exports.IKCP_WND_RCV = exports.IKCP_WND_SND = exports.IKCP_ASK_TELL = exports.IKCP_ASK_SEND = exports.IKCP_CMD_WINS = exports.IKCP_CMD_WASK = exports.IKCP_CMD_ACK = exports.IKCP_CMD_PUSH = exports.IKCP_RTO_MAX = exports.IKCP_RTO_DEF = exports.IKCP_RTO_MIN = exports.IKCP_RTO_NDL = void 0;
 exports.IKCP_RTO_NDL = 30; // no delay min rto
 exports.IKCP_RTO_MIN = 100; // normal min rto
 exports.IKCP_RTO_DEF = 200;
@@ -23,6 +23,7 @@ exports.IKCP_THRESH_MIN = 2;
 exports.IKCP_PROBE_INIT = 7000; // 7 secs to probe window size
 exports.IKCP_PROBE_LIMIT = 120000; // up to 120 secs to probe window
 exports.IKCP_SN_OFFSET = 12;
+exports.IKCP_ACKLIST_LIMIT = exports.IKCP_WND_RCV * 4;
 const refTime = Date.now();
 function currentMs() {
     return Date.now() - refTime;
@@ -132,6 +133,8 @@ class Kcp {
         this.stream = 0; // int
         this.reserved = 0;
         this.user = user;
+        this.released = false;
+        this.maxAckList = exports.IKCP_ACKLIST_LIMIT;
     }
     _delSegment(seg) {
         if (seg?.data) {
@@ -197,6 +200,16 @@ class Kcp {
         return 0;
     }
     release() {
+        if (this.released) {
+            return;
+        }
+        for (const queue of [this.snd_buf, this.rcv_buf, this.snd_queue, this.rcv_queue]) {
+            if (queue) {
+                for (const seg of queue) {
+                    this._delSegment(seg);
+                }
+            }
+        }
         this.snd_buf = undefined;
         this.rcv_buf = undefined;
         this.snd_queue = undefined;
@@ -204,11 +217,17 @@ class Kcp {
         this.buffer = undefined;
         this.acklist = undefined;
         this.ackcount = 0;
+        this.output = undefined;
+        this.user = undefined;
+        this.released = true;
     }
     context() {
         return this.user;
     }
     recv(buffer) {
+        if (this.released) {
+            return -1;
+        }
         const peeksize = this.peekSize();
         if (peeksize < 0) {
             return -1;
@@ -263,6 +282,9 @@ class Kcp {
     //
     // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
     input(data, regular, ackNodelay) {
+        if (this.released) {
+            return -1;
+        }
         const snd_una = this.snd_una;
         if (data.byteLength < exports.IKCP_OVERHEAD) {
             return -1;
@@ -527,9 +549,15 @@ class Kcp {
         this.rx_rto = _ibound_(this.rx_minrto, rto, exports.IKCP_RTO_MAX);
     }
     _ack_push(sn, ts) {
+        if (this.acklist.length >= this.maxAckList) {
+            this.flush(true);
+        }
         this.acklist.push({ sn, ts });
     }
     send(buffer) {
+        if (this.released) {
+            return -1;
+        }
         let count = 0;
         if (buffer.byteLength === 0) {
             return -1;
@@ -545,11 +573,11 @@ class Kcp {
                     if (buffer.byteLength < capacity) {
                         extend = buffer.byteLength;
                     }
-                    // grow slice, the underlying cap is guaranteed to
-                    // be larger than kcp.mss
                     const oldlen = seg.data.byteLength;
-                    seg.data = seg.data.slice(0, oldlen + extend);
-                    buffer.copy(seg.data, oldlen);
+                    const merged = Buffer.alloc(oldlen + extend);
+                    seg.data.copy(merged);
+                    buffer.copy(merged, oldlen, 0, extend);
+                    seg.data = merged;
                     buffer = buffer.slice(extend);
                 }
             }
@@ -596,6 +624,9 @@ class Kcp {
     // ikcp_check when to call it again (without ikcp_input/_send calling).
     // 'current' - current timestamp in millisec.
     update() {
+        if (this.released) {
+            return;
+        }
         let slap = 0; // int32
         const current = currentMs();
         if (this.updated === 0) {
@@ -623,6 +654,9 @@ class Kcp {
     // schedule ikcp_update (eg. implementing an epoll-like mechanism,
     // or optimize ikcp_update when handling massive kcp connections)
     check() {
+        if (this.released) {
+            return 0;
+        }
         const current = currentMs();
         let ts_flush = this.ts_flush;
         let tm_flush = 0x7fffffff;
@@ -664,6 +698,9 @@ class Kcp {
     }
     // flush pending data
     flush(ackOnly) {
+        if (this.released || !this.buffer || !this.output) {
+            return this.interval;
+        }
         const seg = new Segment();
         seg.conv = this.conv;
         seg.cmd = exports.IKCP_CMD_ACK;
@@ -887,6 +924,9 @@ class Kcp {
         return minrto;
     }
     peekSize() {
+        if (this.released) {
+            return -1;
+        }
         if (this.rcv_queue.length === 0) {
             return -1;
         }
@@ -908,6 +948,9 @@ class Kcp {
     }
     // WaitSnd gets how many packet is waiting to be sent
     getWaitSnd() {
+        if (this.released) {
+            return 0;
+        }
         return this.snd_buf.length + this.snd_queue.length;
     }
     setReserveBytes(len) {

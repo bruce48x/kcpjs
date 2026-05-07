@@ -20,6 +20,7 @@ export const IKCP_THRESH_MIN = 2;
 export const IKCP_PROBE_INIT = 7000; // 7 secs to probe window size
 export const IKCP_PROBE_LIMIT = 120000; // up to 120 secs to probe window
 export const IKCP_SN_OFFSET = 12;
+export const IKCP_ACKLIST_LIMIT = IKCP_WND_RCV * 4;
 
 const refTime = Date.now();
 
@@ -198,6 +199,8 @@ export class Kcp {
     output: output_callback;
 
     reserved: number; // uint32
+    released: boolean;
+    maxAckList: number;
 
     constructor(conv: number, user: any) {
         this.conv = conv;
@@ -255,6 +258,8 @@ export class Kcp {
         this.reserved = 0;
 
         this.user = user;
+        this.released = false;
+        this.maxAckList = IKCP_ACKLIST_LIMIT;
     }
 
     private _delSegment(seg: Segment) {
@@ -324,6 +329,16 @@ export class Kcp {
     }
 
     release(): void {
+        if (this.released) {
+            return;
+        }
+        for (const queue of [this.snd_buf, this.rcv_buf, this.snd_queue, this.rcv_queue]) {
+            if (queue) {
+                for (const seg of queue) {
+                    this._delSegment(seg);
+                }
+            }
+        }
         this.snd_buf = undefined;
         this.rcv_buf = undefined;
         this.snd_queue = undefined;
@@ -331,6 +346,9 @@ export class Kcp {
         this.buffer = undefined;
         this.acklist = undefined;
         this.ackcount = 0;
+        this.output = undefined;
+        this.user = undefined;
+        this.released = true;
     }
 
     context(): any {
@@ -338,6 +356,9 @@ export class Kcp {
     }
 
     recv(buffer: Buffer): number {
+        if (this.released) {
+            return -1;
+        }
         const peeksize = this.peekSize();
         if (peeksize < 0) {
             return -1;
@@ -397,6 +418,9 @@ export class Kcp {
     //
     // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
     input(data: Buffer, regular: boolean, ackNodelay: boolean): number {
+        if (this.released) {
+            return -1;
+        }
         const snd_una = this.snd_una;
         if (data.byteLength < IKCP_OVERHEAD) {
             return -1;
@@ -674,10 +698,16 @@ export class Kcp {
     }
 
     private _ack_push(sn: number, ts: number) {
+        if (this.acklist.length >= this.maxAckList) {
+            this.flush(true);
+        }
         this.acklist.push({ sn, ts });
     }
 
     send(buffer: Buffer): number {
+        if (this.released) {
+            return -1;
+        }
         let count = 0;
         if (buffer.byteLength === 0) {
             return -1;
@@ -695,11 +725,11 @@ export class Kcp {
                         extend = buffer.byteLength;
                     }
 
-                    // grow slice, the underlying cap is guaranteed to
-                    // be larger than kcp.mss
                     const oldlen = seg.data.byteLength;
-                    seg.data = seg.data.slice(0, oldlen + extend);
-                    buffer.copy(seg.data, oldlen);
+                    const merged = Buffer.alloc(oldlen + extend);
+                    seg.data.copy(merged);
+                    buffer.copy(merged, oldlen, 0, extend);
+                    seg.data = merged;
                     buffer = buffer.slice(extend);
                 }
             }
@@ -750,6 +780,9 @@ export class Kcp {
     // ikcp_check when to call it again (without ikcp_input/_send calling).
     // 'current' - current timestamp in millisec.
     update(): void {
+        if (this.released) {
+            return;
+        }
         let slap = 0; // int32
 
         const current = currentMs();
@@ -782,6 +815,9 @@ export class Kcp {
     // schedule ikcp_update (eg. implementing an epoll-like mechanism,
     // or optimize ikcp_update when handling massive kcp connections)
     check(): number {
+        if (this.released) {
+            return 0;
+        }
         const current = currentMs();
         let ts_flush = this.ts_flush;
         let tm_flush = 0x7fffffff;
@@ -832,6 +868,9 @@ export class Kcp {
 
     // flush pending data
     flush(ackOnly: boolean): number {
+        if (this.released || !this.buffer || !this.output) {
+            return this.interval;
+        }
         const seg = new Segment();
         seg.conv = this.conv;
         seg.cmd = IKCP_CMD_ACK;
@@ -1074,6 +1113,9 @@ export class Kcp {
     }
 
     peekSize(): number {
+        if (this.released) {
+            return -1;
+        }
         if (this.rcv_queue.length === 0) {
             return -1;
         }
@@ -1099,6 +1141,9 @@ export class Kcp {
 
     // WaitSnd gets how many packet is waiting to be sent
     getWaitSnd(): number {
+        if (this.released) {
+            return 0;
+        }
         return this.snd_buf.length + this.snd_queue.length;
     }
 

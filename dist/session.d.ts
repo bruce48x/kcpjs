@@ -16,7 +16,11 @@ export declare class Listener {
     sessions: {
         [key: string]: UDPSession;
     };
+    maxSessions: number;
+    sessionCount: number;
+    closed: boolean;
     callback: ListenCallback;
+    private messageHandler;
     private packetInput;
     /**
      * 停止 UDP 监听，关闭 socket
@@ -41,11 +45,16 @@ export declare class UDPSession extends EventEmitter {
     headerSize: number;
     ackNoDelay: boolean;
     writeDelay: boolean;
+    maxSendQueueSize: number;
+    closed: boolean;
+    private updateTimer;
+    private messageHandler;
     constructor();
     write(b: Buffer): number;
     writeBuffers(v: Buffer[]): number;
     close(): void;
     setWriteDelay(delay: boolean): void;
+    setWriteBufferLimit(maxSegments: number): void;
     setWindowSize(sndwnd: number, rcvwnd: number): void;
     setMtu(mtu: number): boolean;
     setStreamMode(enable: boolean): void;
@@ -68,6 +77,7 @@ export interface ListenOptions {
     block?: CryptBlock;
     dataShards?: number;
     parityShards?: number;
+    maxSessions?: number;
     callback: ListenCallback;
 }
 export declare function ListenWithOptions(opts: ListenOptions): Listener;

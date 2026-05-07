@@ -1,15 +1,16 @@
 {
   "name": "kcpjs",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "kcpjs = kcpgo_to_js(kcp)",
   "homepage": "https://github.com/bruce48x/kcpjs",
   "main": "./dist/index",
-  "types": "./src/index",
+  "types": "./dist/index",
   "scripts": {
     "build": "yarn format && yarn lint && yarn buildcode",
     "format": "prettier --write \"**/*.ts\"",
     "lint": "eslint \"**/*.ts\" --fix",
-    "buildcode": "tsc -p tsconfig.build.json"
+    "buildcode": "tsc -p tsconfig.build.json",
+    "test": "yarn buildcode && node tests/memory.spec.js"
   },
   "keywords": [
     "kcp"

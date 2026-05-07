@@ -4,3 +4,4 @@ examples
 .eslintignore
 .eslintrc.js
 src/
+tests/

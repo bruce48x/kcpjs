@@ -10,11 +10,16 @@ export declare class FecDecoder {
     private readonly _parityShards;
     private readonly _rxlimit;
     private readonly _shardSize;
+    private readonly _maxCacheBlocks;
     private _cacheBlockMap;
+    private _completedGroups;
+    private _latestGroup;
     private _context;
     constructor(_dataShards: number, _parityShards: number);
     decodeAsync(inData: FecPacket): Promise<EncodeResult>;
     decode(inData: FecPacket, callback: EncodeCallback): void;
+    private trackGroup;
+    private completeGroup;
     private _decode;
     release(): void;
 }
