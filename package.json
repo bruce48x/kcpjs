@@ -1,6 +1,6 @@
 {
   "name": "kcpjs",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "kcpjs = kcpgo_to_js(kcp)",
   "homepage": "https://github.com/bruce48x/kcpjs",
   "repository": {
