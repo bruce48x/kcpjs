@@ -141,6 +141,7 @@ class Listener {
 }
 exports.Listener = Listener;
 const defaultWriteBufferLimit = 1024;
+const defaultOutputBufferPoolLimit = 64;
 class UDPSession extends EventEmitter {
     constructor() {
         super();
@@ -157,6 +158,8 @@ class UDPSession extends EventEmitter {
         this.writeDelay = false; // delay kcp.flush() for Write() for bulk transfer
         this.maxSendQueueSize = defaultWriteBufferLimit;
         this.closed = false;
+        this.outputBufferPool = [];
+        this.outputBufferPoolLimit = defaultOutputBufferPoolLimit;
     }
     // Write implements net.Conn
     write(b) {
@@ -217,6 +220,7 @@ class UDPSession extends EventEmitter {
             this.fecEncoder.release();
             this.fecEncoder = undefined;
         }
+        this.outputBufferPool = [];
         if (this.listener) {
             this.listener.closeSession(this.key);
         }
@@ -267,12 +271,18 @@ class UDPSession extends EventEmitter {
     // 1. FEC packet generation
     // 2. CRC32 integrity
     // 3. Encryption
-    output(buf) {
+    output(buf, release) {
         if (this.closed) {
+            if (release) {
+                release();
+            }
             return;
         }
-        const doOutput = (buff) => {
+        const doOutput = (buff, releaseOutput) => {
             if (this.closed) {
+                if (releaseOutput) {
+                    releaseOutput();
+                }
                 return;
             }
             try {
@@ -283,9 +293,16 @@ class UDPSession extends EventEmitter {
                     buff.writeUInt32LE(checksum, common_1.nonceSize);
                     buff = this.block.encrypt(buff);
                 }
-                this.conn.send(buff, this.port, this.host);
+                this.conn.send(buff, this.port, this.host, () => {
+                    if (releaseOutput) {
+                        releaseOutput();
+                    }
+                });
             }
             catch (err) {
+                if (releaseOutput) {
+                    releaseOutput();
+                }
                 // socket may have been closed while FEC encryption was finishing
             }
         };
@@ -314,8 +331,29 @@ class UDPSession extends EventEmitter {
             });
         }
         else {
-            doOutput(buf);
+            doOutput(buf, release);
         }
+    }
+    acquireOutputBuffer(size) {
+        for (let i = this.outputBufferPool.length - 1; i >= 0; i--) {
+            const buff = this.outputBufferPool[i];
+            if (buff.byteLength === size) {
+                this.outputBufferPool.splice(i, 1);
+                return buff;
+            }
+        }
+        return Buffer.allocUnsafe(size);
+    }
+    releaseOutputBuffer(buff) {
+        if (this.closed || this.outputBufferPool.length >= this.outputBufferPoolLimit) {
+            return;
+        }
+        this.outputBufferPool.push(buff);
+    }
+    copyKcpOutputBuffer(buff, len) {
+        const output = this.acquireOutputBuffer(len);
+        buff.copy(output, 0, 0, len);
+        return output;
     }
     check() {
         if (this.closed || !this.kcp) {
@@ -411,27 +449,26 @@ class UDPSession extends EventEmitter {
                             kcpInErrors++;
                         }
                     }
-                    const size = this.kcp.peekSize();
-                    if (size > 0) {
-                        const buffer = Buffer.alloc(size);
-                        const len = this.kcp.recv(buffer);
-                        if (len) {
-                            this.emit('recv', buffer.slice(0, len));
-                        }
-                    }
+                    this.emitPendingKcpMessage();
                 });
             }
         }
         else {
             this.kcp.input(data, true, this.ackNoDelay);
-            const size = this.kcp.peekSize();
-            if (size > 0) {
-                const buffer = Buffer.alloc(size);
-                const len = this.kcp.recv(buffer);
-                if (len) {
-                    this.emit('recv', buffer.slice(0, len));
-                }
-            }
+            this.emitPendingKcpMessage();
+        }
+    }
+    emitPendingKcpMessage() {
+        const size = this.kcp.peekSize();
+        if (size <= 0) {
+            return;
+        }
+        if (this.recvbuf.byteLength < size) {
+            this.recvbuf = Buffer.alloc(size);
+        }
+        const len = this.kcp.recv(this.recvbuf);
+        if (len > 0) {
+            this.emit('recv', Buffer.from(this.recvbuf.subarray(0, len)));
         }
     }
     readLoop() {
@@ -474,7 +511,13 @@ function newUDPSession(args) {
     sess.kcp.setReserveBytes(sess.headerSize);
     sess.kcp.setOutput((buff, len) => {
         if (len >= kcp_1.IKCP_OVERHEAD + sess.headerSize) {
-            sess.output(Buffer.from(buff.subarray(0, len)));
+            if (sess.fecEncoder) {
+                sess.output(Buffer.from(buff.subarray(0, len)));
+            }
+            else {
+                const output = sess.copyKcpOutputBuffer(buff, len);
+                sess.output(output, () => sess.releaseOutputBuffer(output));
+            }
         }
     });
     if (!sess.listener) {

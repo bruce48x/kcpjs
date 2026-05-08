@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Kcp = exports.IKCP_ACKLIST_LIMIT = exports.IKCP_SN_OFFSET = exports.IKCP_PROBE_LIMIT = exports.IKCP_PROBE_INIT = exports.IKCP_THRESH_MIN = exports.IKCP_THRESH_INIT = exports.IKCP_DEADLINK = exports.IKCP_OVERHEAD = exports.IKCP_INTERVAL = exports.IKCP_ACK_FAST = exports.IKCP_MTU_DEF = exports.IKCP_WND_RCV = exports.IKCP_WND_SND = exports.IKCP_ASK_TELL = exports.IKCP_ASK_SEND = exports.IKCP_CMD_WINS = exports.IKCP_CMD_WASK = exports.IKCP_CMD_ACK = exports.IKCP_CMD_PUSH = exports.IKCP_RTO_MAX = exports.IKCP_RTO_DEF = exports.IKCP_RTO_MIN = exports.IKCP_RTO_NDL = void 0;
+exports.Kcp = exports.IKCP_ACKLIST_LIMIT = exports.IKCP_SN_OFFSET = exports.IKCP_PROBE_LIMIT = exports.IKCP_PROBE_INIT = exports.IKCP_THRESH_MIN = exports.IKCP_THRESH_INIT = exports.IKCP_DEADLINK = exports.IKCP_OVERHEAD = exports.IKCP_INTERVAL = exports.IKCP_ACK_FAST = exports.IKCP_MTU_DEF = exports.IKCP_WND_RCV_MAX = exports.IKCP_WND_SND_MAX = exports.IKCP_WND_RCV = exports.IKCP_WND_SND = exports.IKCP_ASK_TELL = exports.IKCP_ASK_SEND = exports.IKCP_CMD_WINS = exports.IKCP_CMD_WASK = exports.IKCP_CMD_ACK = exports.IKCP_CMD_PUSH = exports.IKCP_RTO_MAX = exports.IKCP_RTO_DEF = exports.IKCP_RTO_MIN = exports.IKCP_RTO_NDL = void 0;
 exports.IKCP_RTO_NDL = 30; // no delay min rto
 exports.IKCP_RTO_MIN = 100; // normal min rto
 exports.IKCP_RTO_DEF = 200;
@@ -13,6 +13,8 @@ exports.IKCP_ASK_SEND = 1; // need to send IKCP_CMD_WASK
 exports.IKCP_ASK_TELL = 2; // need to send IKCP_CMD_WINS
 exports.IKCP_WND_SND = 32;
 exports.IKCP_WND_RCV = 32;
+exports.IKCP_WND_SND_MAX = 1024;
+exports.IKCP_WND_RCV_MAX = 1024;
 exports.IKCP_MTU_DEF = 1400;
 exports.IKCP_ACK_FAST = 3;
 exports.IKCP_INTERVAL = 100;
@@ -54,6 +56,26 @@ function ikcp_decode32u(p, offset = 0) {
 }
 function _ibound_(lower, middle, upper) {
     return Math.min(Math.max(lower, middle), upper);
+}
+function compactQueueHead(queue, count) {
+    if (count <= 0) {
+        return;
+    }
+    if (count >= queue.length) {
+        queue.length = 0;
+        return;
+    }
+    queue.copyWithin(0, count);
+    queue.length -= count;
+}
+function moveQueueHead(from, to, count) {
+    if (count <= 0) {
+        return;
+    }
+    for (let i = 0; i < count; i++) {
+        to.push(from[i]);
+    }
+    compactQueueHead(from, count);
 }
 class Segment {
     constructor(size) {
@@ -143,10 +165,10 @@ class Kcp {
     }
     setWndSize(sndwnd, rcvwnd) {
         if (sndwnd > 0) {
-            this.snd_wnd = sndwnd;
+            this.snd_wnd = _ibound_(1, Math.floor(sndwnd), exports.IKCP_WND_SND_MAX);
         }
         if (rcvwnd > 0) {
-            this.rcv_wnd = rcvwnd;
+            this.rcv_wnd = _ibound_(1, Math.floor(rcvwnd), exports.IKCP_WND_RCV_MAX);
         }
         return 0;
     }
@@ -252,7 +274,7 @@ class Kcp {
             }
         }
         if (count > 0) {
-            this.rcv_queue.splice(0, count);
+            compactQueueHead(this.rcv_queue, count);
         }
         // move available data from rcv_buf -> rcv_queue
         count = 0;
@@ -266,8 +288,7 @@ class Kcp {
             }
         }
         if (count > 0) {
-            const segs = this.rcv_buf.splice(0, count);
-            this.rcv_queue.push(...segs);
+            moveQueueHead(this.rcv_buf, this.rcv_queue, count);
         }
         // fast recover
         if (this.rcv_queue.length < this.rcv_wnd && fast_recover) {
@@ -432,7 +453,7 @@ class Kcp {
             }
         }
         if (count > 0) {
-            this.snd_buf.splice(0, count);
+            compactQueueHead(this.snd_buf, count);
         }
         return count;
     }
@@ -517,8 +538,7 @@ class Kcp {
             }
         }
         if (count > 0) {
-            const segs = this.rcv_buf.splice(0, count);
-            this.rcv_queue.push(...segs);
+            moveQueueHead(this.rcv_buf, this.rcv_queue, count);
         }
         return repeat;
     }
@@ -798,7 +818,7 @@ class Kcp {
             newSegsCount++;
         }
         if (newSegsCount > 0) {
-            this.snd_queue.splice(0, newSegsCount);
+            compactQueueHead(this.snd_queue, newSegsCount);
         }
         // calculate resent
         let resent = this.fastresend;

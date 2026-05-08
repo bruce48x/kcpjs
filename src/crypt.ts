@@ -28,7 +28,17 @@ export class AesBlock implements CryptBlock {
     encrypt(data: Buffer) {
         const opts: crypto.CipherGCMOptions = { authTagLength: this.authTagLength };
         const cipher = crypto.createCipheriv(this.algorithm, this.key, this.iv, opts);
-        return Buffer.concat([cipher.update(data), cipher.final(), cipher.getAuthTag()]);
+        const encrypted = cipher.update(data);
+        const final = cipher.final();
+        const authTag = cipher.getAuthTag();
+        const output = Buffer.allocUnsafe(encrypted.byteLength + final.byteLength + authTag.byteLength);
+        let offset = 0;
+        encrypted.copy(output, offset);
+        offset += encrypted.byteLength;
+        final.copy(output, offset);
+        offset += final.byteLength;
+        authTag.copy(output, offset);
+        return output;
     }
 
     decrypt(data: Buffer) {
@@ -37,6 +47,11 @@ export class AesBlock implements CryptBlock {
         const opts: crypto.CipherGCMOptions = { authTagLength: this.authTagLength };
         const decipher = crypto.createDecipheriv(this.algorithm, this.key, this.iv, opts);
         decipher.setAuthTag(authTag);
-        return Buffer.concat([decipher.update(encryptedData), decipher.final()]);
+        const decrypted = decipher.update(encryptedData);
+        const final = decipher.final();
+        const output = Buffer.allocUnsafe(decrypted.byteLength + final.byteLength);
+        decrypted.copy(output);
+        final.copy(output, decrypted.byteLength);
+        return output;
     }
 }

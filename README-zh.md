@@ -172,6 +172,12 @@ FEC 帮助在不重传的情况下恢复丢失的数据包
 - `parityShards`: 校验分片数量
 - 将任一参数设为 `0` 可禁用 FEC
 
+### 窗口限制
+
+`session.setWindowSize(sndwnd, rcvwnd)` 用于设置 KCP 发送和接收窗口。
+超过 `IKCP_WND_SND_MAX` 或 `IKCP_WND_RCV_MAX` 的值会被限制到导出的硬上限，
+避免单个会话占用无边界增长的内存。
+
 ### 加密
 
 支持 AES-GCM 加密

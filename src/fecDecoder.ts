@@ -31,6 +31,10 @@ export class FecDecoder {
 
     // RS decoder
     private _context: any;
+    private _decoderBuffer: Buffer;
+    private _decoderParity: Buffer;
+    private _decoderBufferInUse: boolean;
+    private _decoderParityInUse: boolean;
 
     constructor(
         private readonly _dataShards: number,
@@ -43,6 +47,8 @@ export class FecDecoder {
         this._cacheBlockMap = new Map();
         this._completedGroups = new Set();
         this._latestGroup = -1;
+        this._decoderBufferInUse = false;
+        this._decoderParityInUse = false;
     }
 
     decodeAsync(inData: FecPacket): Promise<EncodeResult> {
@@ -158,7 +164,15 @@ export class FecDecoder {
 
         // 把数据包补足为长度相同的 buffer
         const shardSize = multiple8(cacheBlock.maxSize);
-        const encoderBuffer = Buffer.alloc(shardSize * this._dataShards);
+        const bufferSize = shardSize * this._dataShards;
+        const paritySize = shardSize * this._parityShards;
+        const decoderBufferWork = this.acquireDecoderBuffer(bufferSize);
+        const decoderParityWork = this.acquireDecoderParity(paritySize);
+        const encoderBuffer = decoderBufferWork.buffer;
+        const encoderParity = decoderParityWork.buffer;
+
+        encoderBuffer.fill(0, 0, bufferSize);
+        encoderParity.fill(0, 0, paritySize);
         const missingData: number[] = [];
         for (let i = 0; i < this._dataShards; i++) {
             const buff = cacheBlock.dataArr[i]?.slice(fecHeaderSize);
@@ -169,16 +183,12 @@ export class FecDecoder {
             }
         }
 
-        const encoderParity = Buffer.alloc(shardSize * this._parityShards);
         for (let i = 0; i < this._parityShards; i++) {
             const buff = cacheBlock.parityArr[i]?.slice(fecHeaderSize);
             if (undefined !== buff) {
                 buff.copy(encoderParity, i * shardSize, 0, Math.min(buff.byteLength, shardSize));
             }
         }
-
-        const bufferSize = encoderBuffer.byteLength - bufferOffset;
-        const paritySize = encoderParity.byteLength - parityOffset;
 
         const { sources, targets } = cacheBlock;
 
@@ -194,21 +204,63 @@ export class FecDecoder {
             paritySize,
             (error: any) => {
                 if (error) {
+                    this.releaseDecoderBuffer(decoderBufferWork.pooled);
+                    this.releaseDecoderParity(decoderParityWork.pooled);
                     callback(error, {});
                     return;
                 }
                 const recovered: Buffer[] = [];
                 for (const i of missingData) {
-                    recovered.push(encoderBuffer.slice(i * shardSize, (i + 1) * shardSize));
+                    recovered.push(Buffer.from(encoderBuffer.subarray(i * shardSize, (i + 1) * shardSize)));
                 }
+                this.releaseDecoderBuffer(decoderBufferWork.pooled);
+                this.releaseDecoderParity(decoderParityWork.pooled);
                 callback(undefined, { parity: recovered });
             },
         );
     }
 
+    private acquireDecoderBuffer(size: number): { buffer: Buffer; pooled: boolean } {
+        if (!this._decoderBufferInUse) {
+            if (!this._decoderBuffer || this._decoderBuffer.byteLength < size) {
+                this._decoderBuffer = Buffer.allocUnsafe(size);
+            }
+            this._decoderBufferInUse = true;
+            return { buffer: this._decoderBuffer, pooled: true };
+        }
+        return { buffer: Buffer.allocUnsafe(size), pooled: false };
+    }
+
+    private acquireDecoderParity(size: number): { buffer: Buffer; pooled: boolean } {
+        if (!this._decoderParityInUse) {
+            if (!this._decoderParity || this._decoderParity.byteLength < size) {
+                this._decoderParity = Buffer.allocUnsafe(size);
+            }
+            this._decoderParityInUse = true;
+            return { buffer: this._decoderParity, pooled: true };
+        }
+        return { buffer: Buffer.allocUnsafe(size), pooled: false };
+    }
+
+    private releaseDecoderBuffer(pooled: boolean): void {
+        if (pooled) {
+            this._decoderBufferInUse = false;
+        }
+    }
+
+    private releaseDecoderParity(pooled: boolean): void {
+        if (pooled) {
+            this._decoderParityInUse = false;
+        }
+    }
+
     release() {
         this._cacheBlockMap = undefined;
         this._completedGroups = undefined;
+        this._decoderBuffer = undefined;
+        this._decoderParity = undefined;
+        this._decoderBufferInUse = false;
+        this._decoderParityInUse = false;
         this._context = undefined;
     }
 }

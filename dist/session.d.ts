@@ -49,6 +49,8 @@ export declare class UDPSession extends EventEmitter {
     closed: boolean;
     private updateTimer;
     private messageHandler;
+    private outputBufferPool;
+    private outputBufferPoolLimit;
     constructor();
     write(b: Buffer): number;
     writeBuffers(v: Buffer[]): number;
@@ -60,7 +62,10 @@ export declare class UDPSession extends EventEmitter {
     setStreamMode(enable: boolean): void;
     setACKNoDelay(nodelay: boolean): void;
     setNoDelay(nodelay: number, interval: number, resend: number, nc: number): void;
-    output(buf: Buffer): void;
+    output(buf: Buffer, release?: () => void): void;
+    private acquireOutputBuffer;
+    releaseOutputBuffer(buff: Buffer): void;
+    copyKcpOutputBuffer(buff: Buffer, len: number): Buffer;
     check(): void;
     getConv(): number;
     getRTO(): number;
@@ -68,6 +73,7 @@ export declare class UDPSession extends EventEmitter {
     getSRTTVar(): number;
     packetInput(data: Buffer): void;
     kcpInput(data: Buffer): void;
+    private emitPendingKcpMessage;
     readLoop(): void;
 }
 export type ListenCallback = (session: UDPSession) => void;

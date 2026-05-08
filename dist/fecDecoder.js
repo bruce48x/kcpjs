@@ -23,6 +23,8 @@ class FecDecoder {
         this._cacheBlockMap = new Map();
         this._completedGroups = new Set();
         this._latestGroup = -1;
+        this._decoderBufferInUse = false;
+        this._decoderParityInUse = false;
     }
     decodeAsync(inData) {
         return new Promise((resolve, reject) => {
@@ -128,7 +130,14 @@ class FecDecoder {
         const parityOffset = 0;
         // 把数据包补足为长度相同的 buffer
         const shardSize = (0, common_1.multiple8)(cacheBlock.maxSize);
-        const encoderBuffer = Buffer.alloc(shardSize * this._dataShards);
+        const bufferSize = shardSize * this._dataShards;
+        const paritySize = shardSize * this._parityShards;
+        const decoderBufferWork = this.acquireDecoderBuffer(bufferSize);
+        const decoderParityWork = this.acquireDecoderParity(paritySize);
+        const encoderBuffer = decoderBufferWork.buffer;
+        const encoderParity = decoderParityWork.buffer;
+        encoderBuffer.fill(0, 0, bufferSize);
+        encoderParity.fill(0, 0, paritySize);
         const missingData = [];
         for (let i = 0; i < this._dataShards; i++) {
             const buff = cacheBlock.dataArr[i]?.slice(common_1.fecHeaderSize);
@@ -139,31 +148,66 @@ class FecDecoder {
                 buff.copy(encoderBuffer, i * shardSize, 0, Math.min(buff.byteLength, shardSize));
             }
         }
-        const encoderParity = Buffer.alloc(shardSize * this._parityShards);
         for (let i = 0; i < this._parityShards; i++) {
             const buff = cacheBlock.parityArr[i]?.slice(common_1.fecHeaderSize);
             if (undefined !== buff) {
                 buff.copy(encoderParity, i * shardSize, 0, Math.min(buff.byteLength, shardSize));
             }
         }
-        const bufferSize = encoderBuffer.byteLength - bufferOffset;
-        const paritySize = encoderParity.byteLength - parityOffset;
         const { sources, targets } = cacheBlock;
         ReedSolomon.encode(this._context, sources, targets, encoderBuffer, bufferOffset, bufferSize, encoderParity, parityOffset, paritySize, (error) => {
             if (error) {
+                this.releaseDecoderBuffer(decoderBufferWork.pooled);
+                this.releaseDecoderParity(decoderParityWork.pooled);
                 callback(error, {});
                 return;
             }
             const recovered = [];
             for (const i of missingData) {
-                recovered.push(encoderBuffer.slice(i * shardSize, (i + 1) * shardSize));
+                recovered.push(Buffer.from(encoderBuffer.subarray(i * shardSize, (i + 1) * shardSize)));
             }
+            this.releaseDecoderBuffer(decoderBufferWork.pooled);
+            this.releaseDecoderParity(decoderParityWork.pooled);
             callback(undefined, { parity: recovered });
         });
+    }
+    acquireDecoderBuffer(size) {
+        if (!this._decoderBufferInUse) {
+            if (!this._decoderBuffer || this._decoderBuffer.byteLength < size) {
+                this._decoderBuffer = Buffer.allocUnsafe(size);
+            }
+            this._decoderBufferInUse = true;
+            return { buffer: this._decoderBuffer, pooled: true };
+        }
+        return { buffer: Buffer.allocUnsafe(size), pooled: false };
+    }
+    acquireDecoderParity(size) {
+        if (!this._decoderParityInUse) {
+            if (!this._decoderParity || this._decoderParity.byteLength < size) {
+                this._decoderParity = Buffer.allocUnsafe(size);
+            }
+            this._decoderParityInUse = true;
+            return { buffer: this._decoderParity, pooled: true };
+        }
+        return { buffer: Buffer.allocUnsafe(size), pooled: false };
+    }
+    releaseDecoderBuffer(pooled) {
+        if (pooled) {
+            this._decoderBufferInUse = false;
+        }
+    }
+    releaseDecoderParity(pooled) {
+        if (pooled) {
+            this._decoderParityInUse = false;
+        }
     }
     release() {
         this._cacheBlockMap = undefined;
         this._completedGroups = undefined;
+        this._decoderBuffer = undefined;
+        this._decoderParity = undefined;
+        this._decoderBufferInUse = false;
+        this._decoderParityInUse = false;
         this._context = undefined;
     }
 }

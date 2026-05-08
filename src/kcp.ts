@@ -10,6 +10,8 @@ export const IKCP_ASK_SEND = 1; // need to send IKCP_CMD_WASK
 export const IKCP_ASK_TELL = 2; // need to send IKCP_CMD_WINS
 export const IKCP_WND_SND = 32;
 export const IKCP_WND_RCV = 32;
+export const IKCP_WND_SND_MAX = 1024;
+export const IKCP_WND_RCV_MAX = 1024;
 export const IKCP_MTU_DEF = 1400;
 export const IKCP_ACK_FAST = 3;
 export const IKCP_INTERVAL = 100;
@@ -60,6 +62,28 @@ function ikcp_decode32u(p: Buffer, offset = 0): number {
 
 function _ibound_(lower: number, middle: number, upper: number): number {
     return Math.min(Math.max(lower, middle), upper);
+}
+
+function compactQueueHead<T>(queue: T[], count: number): void {
+    if (count <= 0) {
+        return;
+    }
+    if (count >= queue.length) {
+        queue.length = 0;
+        return;
+    }
+    queue.copyWithin(0, count);
+    queue.length -= count;
+}
+
+function moveQueueHead<T>(from: T[], to: T[], count: number): void {
+    if (count <= 0) {
+        return;
+    }
+    for (let i = 0; i < count; i++) {
+        to.push(from[i]);
+    }
+    compactQueueHead(from, count);
 }
 
 class Segment {
@@ -270,10 +294,10 @@ export class Kcp {
 
     setWndSize(sndwnd: number, rcvwnd: number): number {
         if (sndwnd > 0) {
-            this.snd_wnd = sndwnd;
+            this.snd_wnd = _ibound_(1, Math.floor(sndwnd), IKCP_WND_SND_MAX);
         }
         if (rcvwnd > 0) {
-            this.rcv_wnd = rcvwnd;
+            this.rcv_wnd = _ibound_(1, Math.floor(rcvwnd), IKCP_WND_RCV_MAX);
         }
         return 0;
     }
@@ -385,7 +409,7 @@ export class Kcp {
             }
         }
         if (count > 0) {
-            this.rcv_queue.splice(0, count);
+            compactQueueHead(this.rcv_queue, count);
         }
 
         // move available data from rcv_buf -> rcv_queue
@@ -400,8 +424,7 @@ export class Kcp {
         }
 
         if (count > 0) {
-            const segs = this.rcv_buf.splice(0, count);
-            this.rcv_queue.push(...segs);
+            moveQueueHead(this.rcv_buf, this.rcv_queue, count);
         }
 
         // fast recover
@@ -573,7 +596,7 @@ export class Kcp {
             }
         }
         if (count > 0) {
-            this.snd_buf.splice(0, count);
+            compactQueueHead(this.snd_buf, count);
         }
         return count;
     }
@@ -665,8 +688,7 @@ export class Kcp {
             }
         }
         if (count > 0) {
-            const segs = this.rcv_buf.splice(0, count);
-            this.rcv_queue.push(...segs);
+            moveQueueHead(this.rcv_buf, this.rcv_queue, count);
         }
 
         return repeat;
@@ -977,7 +999,7 @@ export class Kcp {
             newSegsCount++;
         }
         if (newSegsCount > 0) {
-            this.snd_queue.splice(0, newSegsCount);
+            compactQueueHead(this.snd_queue, newSegsCount);
         }
 
         // calculate resent

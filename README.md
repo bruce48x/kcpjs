@@ -173,6 +173,12 @@ FEC helps recover lost packets without retransmission
 - `parityShards`: Number of parity shards
 - Set either to `0` to disable FEC
 
+### Window Limits
+
+`session.setWindowSize(sndwnd, rcvwnd)` controls the KCP send and receive
+windows. Values above `IKCP_WND_SND_MAX` or `IKCP_WND_RCV_MAX` are clamped to
+the exported hard limits to keep per-session memory bounded.
+
 ### Encryption
 
 Supports AES-GCM encryption

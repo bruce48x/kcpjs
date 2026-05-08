@@ -15,11 +15,19 @@ export declare class FecDecoder {
     private _completedGroups;
     private _latestGroup;
     private _context;
+    private _decoderBuffer;
+    private _decoderParity;
+    private _decoderBufferInUse;
+    private _decoderParityInUse;
     constructor(_dataShards: number, _parityShards: number);
     decodeAsync(inData: FecPacket): Promise<EncodeResult>;
     decode(inData: FecPacket, callback: EncodeCallback): void;
     private trackGroup;
     private completeGroup;
     private _decode;
+    private acquireDecoderBuffer;
+    private acquireDecoderParity;
+    private releaseDecoderBuffer;
+    private releaseDecoderParity;
     release(): void;
 }

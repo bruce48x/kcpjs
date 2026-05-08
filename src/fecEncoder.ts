@@ -30,6 +30,10 @@ export class FecEncoder {
 
     // RS encoder
     private _context: any;
+    private _encoderBuffer: Buffer;
+    private _encoderParity: Buffer;
+    private _encoderBufferInUse: boolean;
+    private _encoderParityInUse: boolean;
 
     constructor(dataShards: number, parityShards: number, offset: number) {
         if (dataShards <= 0 || parityShards <= 0) {
@@ -48,6 +52,8 @@ export class FecEncoder {
 
         this._shardCount = 0;
         this._next = 0;
+        this._encoderBufferInUse = false;
+        this._encoderParityInUse = false;
     }
 
     private markData(data: Buffer): void {
@@ -118,16 +124,20 @@ export class FecEncoder {
 
         // 把数据包补足为长度相同的 buffer
         const shardSize = multiple8(cacheBlock.maxSize);
-        const encoderBuffer = Buffer.alloc(shardSize * this._dataShards);
+        const bufferSize = shardSize * this._dataShards;
+        const paritySize = shardSize * this._parityShards;
+        const encoderBufferWork = this.acquireEncoderBuffer(bufferSize);
+        const encoderParityWork = this.acquireEncoderParity(paritySize);
+        const encoderBuffer = encoderBufferWork.buffer;
+        const encoderParity = encoderParityWork.buffer;
+
+        encoderBuffer.fill(0, 0, bufferSize);
+        encoderParity.fill(0, 0, paritySize);
         for (let i = 0; i < cacheBlock.dataArr.length; i++) {
             const buff = cacheBlock.dataArr[i];
             const dataBuff = buff.slice(this._payloadOffset);
             dataBuff.copy(encoderBuffer, i * shardSize, 0, Math.min(dataBuff.byteLength, shardSize));
         }
-
-        const bufferSize = encoderBuffer.byteLength;
-        const paritySize = shardSize * this._parityShards;
-        const encoderParity: Buffer = Buffer.alloc(paritySize);
 
         const { sources, targets } = cacheBlock;
 
@@ -149,13 +159,53 @@ export class FecEncoder {
                     this.markParity(p);
                     parity.push(p);
                 }
+                this.releaseEncoderBuffer(encoderBufferWork.pooled);
+                this.releaseEncoderParity(encoderParityWork.pooled);
                 callback(error, { data: [buff], parity });
             },
         );
     }
 
+    private acquireEncoderBuffer(size: number): { buffer: Buffer; pooled: boolean } {
+        if (!this._encoderBufferInUse) {
+            if (!this._encoderBuffer || this._encoderBuffer.byteLength < size) {
+                this._encoderBuffer = Buffer.allocUnsafe(size);
+            }
+            this._encoderBufferInUse = true;
+            return { buffer: this._encoderBuffer, pooled: true };
+        }
+        return { buffer: Buffer.allocUnsafe(size), pooled: false };
+    }
+
+    private acquireEncoderParity(size: number): { buffer: Buffer; pooled: boolean } {
+        if (!this._encoderParityInUse) {
+            if (!this._encoderParity || this._encoderParity.byteLength < size) {
+                this._encoderParity = Buffer.allocUnsafe(size);
+            }
+            this._encoderParityInUse = true;
+            return { buffer: this._encoderParity, pooled: true };
+        }
+        return { buffer: Buffer.allocUnsafe(size), pooled: false };
+    }
+
+    private releaseEncoderBuffer(pooled: boolean): void {
+        if (pooled) {
+            this._encoderBufferInUse = false;
+        }
+    }
+
+    private releaseEncoderParity(pooled: boolean): void {
+        if (pooled) {
+            this._encoderParityInUse = false;
+        }
+    }
+
     release() {
         this._cacheBlock = undefined;
+        this._encoderBuffer = undefined;
+        this._encoderParity = undefined;
+        this._encoderBufferInUse = false;
+        this._encoderParityInUse = false;
         this._context = undefined;
     }
 }
