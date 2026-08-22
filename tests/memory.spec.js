@@ -367,6 +367,34 @@ async function testSessionReceiveBufferIsUsedForFecPayloads() {
     session.close();
 }
 
+async function testSessionDefaultsDisableFecAndEncryption() {
+    const session = DialWithOptions({
+        conv: 5007,
+        port: 9,
+        host: '127.0.0.1',
+    });
+    const encoder = new FecEncoder(1, 1, 0);
+    const received = [];
+    session.on('recv', (data) => received.push(data));
+
+    try {
+        assert.strictEqual(session.block, undefined);
+        assert.strictEqual(session.fecEncoder, undefined);
+        assert.strictEqual(session.fecDecoder, undefined);
+        assert.strictEqual(session.headerSize, 0);
+
+        const payload = Buffer.from('disabled fec');
+        const result = await encodeAsync(encoder, makeFecDataFrame(makeKcpPushPacket(session.getConv(), 0, payload)));
+        session.kcpInput(result.data[0]);
+
+        assert.strictEqual(session.fecDecoder, undefined);
+        assert.deepStrictEqual(received, []);
+    } finally {
+        encoder.release();
+        session.close();
+    }
+}
+
 async function testKcpOutputBufferPoolReusesSafeCopies() {
     const session = Dial(5003, 9, '127.0.0.1');
     const sent = [];
@@ -589,11 +617,19 @@ async function testListenerEnforcesSessionLimit() {
         callback: () => {},
     });
 
+    assert.strictEqual(listener.block, undefined);
+    assert.strictEqual(listener.dataShards, 0);
+    assert.strictEqual(listener.parityShards, 0);
+
     listener.packetInput(makeKcpPushPacket(2001), { address: '127.0.0.1', port: 11001 });
     listener.packetInput(makeKcpPushPacket(2002), { address: '127.0.0.1', port: 11002 });
 
     assert.strictEqual(listener.sessionCount, 1);
     assert.strictEqual(Object.keys(listener.sessions).length, 1);
+    const session = listener.sessions['127.0.0.1:11001'];
+    assert.strictEqual(session.block, undefined);
+    assert.strictEqual(session.fecEncoder, undefined);
+    assert.strictEqual(session.fecDecoder, undefined);
 
     listener.close();
 }
@@ -628,6 +664,7 @@ async function main() {
     await testFecDecoderReusesWorkBuffersAndReturnsOwnedRecoveredData();
     await testSessionReceiveBufferIsReusedAndPayloadIsOwned();
     await testSessionReceiveBufferIsUsedForFecPayloads();
+    await testSessionDefaultsDisableFecAndEncryption();
     await testKcpOutputBufferPoolReusesSafeCopies();
     await testKcpOutputBufferPoolWorksWithEncryption();
     await testAesBlockRoundTripAndTamperFailure();

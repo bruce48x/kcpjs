@@ -9,18 +9,18 @@ const port = 22333;
 const conv = 255;
 
 // fec 前向纠错
-const dataShards = 4;
-const parityShards = 1;
+const dataShards = 0;
+const parityShards = 0;
 
 // 加密
+const encryptionEnabled: boolean = false;
 const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
 const key = crypto.randomBytes(128 / 8);
-const iv = crypto.randomBytes(12);
 
 // server
 const listener = ListenWithOptions({
     port,
-    block: new AesBlock(algorithm, key, iv),
+    block: encryptionEnabled ? new AesBlock(algorithm, key) : undefined,
     dataShards,
     parityShards,
     callback: (session) => {
@@ -36,7 +36,7 @@ const session = DialWithOptions({
     conv,
     port,
     host,
-    block: new AesBlock(algorithm, key, iv),
+    block: encryptionEnabled ? new AesBlock(algorithm, key) : undefined,
     dataShards,
     parityShards,
 });

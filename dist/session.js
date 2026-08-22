@@ -408,13 +408,9 @@ class UDPSession extends EventEmitter {
         const fecFlag = fpkt.flag();
         if (fecFlag == common_1.typeData || fecFlag == common_1.typeParity) {
             // 16bit kcp cmd [81-84] and frg [0-255] will not overlap with FEC type 0x00f1 0x00f2
-            if (data.byteLength >= common_1.fecHeaderSizePlus2) {
+            if (data.byteLength >= common_1.fecHeaderSizePlus2 && this.fecDecoder) {
                 if (fecFlag == common_1.typeParity) {
                     fecParityShards++;
-                }
-                // if fecDecoder is not initialized, create one with default parameter
-                if (!this.fecDecoder) {
-                    this.fecDecoder = new fecDecoder_1.FecDecoder(1, 1);
                 }
                 this.fecDecoder.decode(fpkt, (err, result) => {
                     if (err) {
@@ -526,7 +522,7 @@ exports.Listen = Listen;
 //
 // Check https://github.com/klauspost/reedsolomon for details
 function ListenWithOptions(opts) {
-    const { port, block, dataShards, parityShards, maxSessions, callback } = opts;
+    const { port, block = undefined, dataShards = 0, parityShards = 0, maxSessions, callback } = opts;
     const socket = dgram.createSocket('udp4');
     socket.bind(port);
     socket.on('listening', (err) => {
@@ -569,7 +565,7 @@ exports.Dial = Dial;
 //
 // Check https://github.com/klauspost/reedsolomon for details
 function DialWithOptions(opts) {
-    const { conv, port, host, dataShards, parityShards, block } = opts;
+    const { conv, port, host, dataShards = 0, parityShards = 0, block = undefined } = opts;
     const conn = dgram.createSocket('udp4');
     return newUDPSession({
         conv,

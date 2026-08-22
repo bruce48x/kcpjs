@@ -1,10 +1,10 @@
 import { ListenWithOptions } from '../src/session';
 import { AesBlock, CryptBlock } from '../src/crypt';
-import { port, algorithm, key, iv, dataShards, parityShards } from './common';
+import { port, encryptionEnabled, algorithm, key, dataShards, parityShards } from './common';
 
 let block: CryptBlock | undefined = undefined;
-if (algorithm && key && iv) {
-    block = new AesBlock(algorithm, key, iv);
+if (encryptionEnabled) {
+    block = new AesBlock(algorithm, key);
 }
 
 // server

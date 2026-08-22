@@ -1,10 +1,10 @@
 import { DialWithOptions } from '../src/session';
 import { AesBlock, CryptBlock } from '../src/crypt';
-import { log, host, port, conv, algorithm, key, iv, dataShards, parityShards } from './common';
+import { log, host, port, conv, encryptionEnabled, algorithm, key, dataShards, parityShards } from './common';
 
 let block: CryptBlock | undefined = undefined;
-if (algorithm && key && iv) {
-    block = new AesBlock(algorithm, key, iv);
+if (encryptionEnabled) {
+    block = new AesBlock(algorithm, key);
 }
 
 // client

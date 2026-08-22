@@ -97,22 +97,9 @@ ts-node examples/client.ts
 
 ```typescript
 import { ListenWithOptions } from 'kcpjs';
-import { AesBlock } from 'kcpjs/crypt';
-import * as crypto from 'crypto';
-
-// 加密设置
-const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
-const key = crypto.randomBytes(128 / 8);
-
-// FEC 配置
-const dataShards = 4;
-const parityShards = 1;
 
 const server = ListenWithOptions({
     port: 22333,
-    block: new AesBlock(algorithm, key),
-    dataShards,
-    parityShards,
     callback: (session) => {
         console.log('新客户端连接');
 
@@ -128,23 +115,11 @@ const server = ListenWithOptions({
 
 ```typescript
 import { DialWithOptions } from 'kcpjs';
-import { AesBlock } from 'kcpjs/crypt';
-import * as crypto from 'crypto';
-
-// 与服务器相同的加密设置
-const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
-const key = crypto.randomBytes(128 / 8);
-
-const dataShards = 4;
-const parityShards = 1;
 
 const session = DialWithOptions({
     host: '127.0.0.1',
     port: 22333,
     conv: 255,
-    block: new AesBlock(algorithm, key),
-    dataShards,
-    parityShards,
 });
 
 session.on('recv', (data: Buffer) => {
@@ -166,6 +141,7 @@ setInterval(() => {
 
 FEC 帮助在不重传的情况下恢复丢失的数据包
 
+- FEC 默认关闭
 - `dataShards`: 数据分片数量
 - `parityShards`: 校验分片数量
 - 将任一参数设为 `0` 可禁用 FEC
@@ -180,6 +156,7 @@ FEC 帮助在不重传的情况下恢复丢失的数据包
 
 支持 AES-GCM 加密
 
+- 加密默认关闭
 - `algorithm`: 加密算法（如 'aes-128-gcm'）
 - `key`: 加密密钥
 - 每个加密包都携带由 `AesBlock` 生成的唯一认证 nonce
