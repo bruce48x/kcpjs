@@ -99,8 +99,8 @@ class FecEncoder {
         ReedSolomon.encode(this._context, sources, targets, encoderBuffer, bufferOffset, bufferSize, encoderParity, parityOffset, paritySize, (error) => {
             const parity = [];
             for (let i = 0; i < this._parityShards; i++) {
-                const p = Buffer.alloc(common_1.fecHeaderSize + shardSize);
-                encoderParity.copy(p, common_1.fecHeaderSize, i * shardSize, (i + 1) * shardSize);
+                const p = Buffer.alloc(this._payloadOffset + shardSize);
+                encoderParity.copy(p, this._payloadOffset, i * shardSize, (i + 1) * shardSize);
                 this.markParity(p);
                 parity.push(p);
             }

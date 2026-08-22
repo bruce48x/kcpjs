@@ -154,8 +154,8 @@ export class FecEncoder {
             (error: any) => {
                 const parity: Buffer[] = [];
                 for (let i = 0; i < this._parityShards; i++) {
-                    const p = Buffer.alloc(fecHeaderSize + shardSize);
-                    encoderParity.copy(p, fecHeaderSize, i * shardSize, (i + 1) * shardSize);
+                    const p = Buffer.alloc(this._payloadOffset + shardSize);
+                    encoderParity.copy(p, this._payloadOffset, i * shardSize, (i + 1) * shardSize);
                     this.markParity(p);
                     parity.push(p);
                 }

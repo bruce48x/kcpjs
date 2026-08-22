@@ -462,6 +462,77 @@ async function testSessionOutputUsesRealAesBlock() {
     session.close();
 }
 
+async function testEncryptedFecRecoversDroppedDataShard() {
+    const block = new AesBlock('aes-128-gcm', crypto.randomBytes(16), crypto.randomBytes(12));
+    const opts = {
+        conv: 5006,
+        port: 9,
+        host: '127.0.0.1',
+        dataShards: 4,
+        parityShards: 1,
+        block,
+    };
+    const sender = DialWithOptions(opts);
+    const receiver = DialWithOptions(opts);
+    const packets = [];
+    const received = [];
+
+    sender.setNoDelay(1, 20, 2, 1);
+    receiver.setNoDelay(1, 20, 2, 1);
+    sender.conn.send = (buff, port, host, callback) => {
+        packets.push(Buffer.from(buff));
+        if (callback) {
+            callback(null, buff.byteLength);
+        }
+    };
+    receiver.conn.send = (buff, port, host, callback) => {
+        if (callback) {
+            callback(null, buff.byteLength);
+        }
+    };
+    receiver.on('recv', (data) => {
+        received.push(data.toString());
+    });
+
+    try {
+        for (let i = 0; i < 4; i++) {
+            assert.strictEqual(sender.write(Buffer.from(`message-${i}`)), 9);
+        }
+
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('timed out waiting for encrypted FEC packets')), 1000);
+            const poll = () => {
+                if (packets.length >= 5) {
+                    clearTimeout(timeout);
+                    resolve();
+                    return;
+                }
+                setImmediate(poll);
+            };
+            poll();
+        });
+
+        for (const packet of packets) {
+            const plain = block.decrypt(packet).slice(cryptHeaderSize);
+            const fecSeq = plain.readUInt32LE(0);
+            if (fecSeq !== 1) {
+                receiver.packetInput(packet);
+            }
+        }
+
+        await new Promise((resolve) => setImmediate(resolve));
+        while (receiver.kcp.peekSize() > 0) {
+            receiver.emitPendingKcpMessage();
+        }
+
+        assert.strictEqual(receiver.kcp.rcv_nxt, 4);
+        assert.deepStrictEqual(received, ['message-0', 'message-1', 'message-2', 'message-3']);
+    } finally {
+        sender.close();
+        receiver.close();
+    }
+}
+
 async function testSessionCloseClearsTimerSocketListenerAndKcp() {
     const session = Dial(1001, 9, '127.0.0.1');
     const socket = session.conn;
@@ -528,6 +599,7 @@ async function main() {
     await testKcpOutputBufferPoolWorksWithEncryption();
     await testAesBlockRoundTripAndTamperFailure();
     await testSessionOutputUsesRealAesBlock();
+    await testEncryptedFecRecoversDroppedDataShard();
     await testKcpWindowSizeIsClamped();
     await testKcpSendQueueIsStructurallyBounded();
     await testKcpSendQueueCompactionPreservesOrder();
