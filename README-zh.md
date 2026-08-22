@@ -103,7 +103,6 @@ import * as crypto from 'crypto';
 // 加密设置
 const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
 const key = crypto.randomBytes(128 / 8);
-const iv = crypto.randomBytes(12);
 
 // FEC 配置
 const dataShards = 4;
@@ -111,12 +110,12 @@ const parityShards = 1;
 
 const server = ListenWithOptions({
     port: 22333,
-    block: new AesBlock(algorithm, key, iv),
+    block: new AesBlock(algorithm, key),
     dataShards,
     parityShards,
     callback: (session) => {
         console.log('新客户端连接');
-        
+
         session.on('recv', (data: Buffer) => {
             // 回显接收到的数据
             session.write(data);
@@ -135,7 +134,6 @@ import * as crypto from 'crypto';
 // 与服务器相同的加密设置
 const algorithm: crypto.CipherGCMTypes = 'aes-128-gcm';
 const key = crypto.randomBytes(128 / 8);
-const iv = crypto.randomBytes(12);
 
 const dataShards = 4;
 const parityShards = 1;
@@ -144,7 +142,7 @@ const session = DialWithOptions({
     host: '127.0.0.1',
     port: 22333,
     conv: 255,
-    block: new AesBlock(algorithm, key, iv),
+    block: new AesBlock(algorithm, key),
     dataShards,
     parityShards,
 });
@@ -184,8 +182,11 @@ FEC 帮助在不重传的情况下恢复丢失的数据包
 
 - `algorithm`: 加密算法（如 'aes-128-gcm'）
 - `key`: 加密密钥
-- `iv`: 初始化向量
-- 将任一参数设为空可禁用加密
+- 每个加密包都携带由 `AesBlock` 生成的唯一认证 nonce
+- 旧版构造函数的 `iv` 参数仍可传入以保持源码兼容，但不再使用
+- 省略 `block` 即可禁用加密
+
+新的逐包 nonce 格式无法与仍然重复使用构造函数 IV 的旧版本进行线协议互通。
 
 ---
 

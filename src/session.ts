@@ -28,6 +28,33 @@ function addrToString(arg1: dgram.RemoteInfo | string, arg2?: number): string {
     }
 }
 
+function usesLegacyCryptHeader(block: CryptBlock): boolean {
+    return block?.authenticated !== true;
+}
+
+function decryptPacket(block: CryptBlock, data: Buffer): Buffer | undefined {
+    if (!block) {
+        return data;
+    }
+
+    try {
+        const plain = block.decrypt(data);
+        if (!usesLegacyCryptHeader(block)) {
+            return plain;
+        }
+        if (plain.byteLength < cryptHeaderSize) {
+            return undefined;
+        }
+        const checksum = crc32.buf(plain.slice(cryptHeaderSize)) >>> 0;
+        if (checksum !== plain.readUInt32LE(nonceSize)) {
+            return undefined;
+        }
+        return plain.slice(cryptHeaderSize);
+    } catch (err) {
+        return undefined;
+    }
+}
+
 export class Listener {
     block: CryptBlock; // block encryption
     dataShards: number; // FEC data shard
@@ -48,27 +75,10 @@ export class Listener {
         if (this.closed) {
             return;
         }
-        let decrypted = false;
-        if (this.block && data.byteLength >= cryptHeaderSize) {
-            try {
-                data = this.block.decrypt(data);
-                const checksum = crc32.buf(data.slice(cryptHeaderSize)) >>> 0;
-                if (checksum === data.readUInt32LE(nonceSize)) {
-                    data = data.slice(cryptHeaderSize);
-                    decrypted = true;
-                } else {
-                    // do nothing
-                    // crc32 检测未通过
-                }
-            } catch (err) {
-                return;
-            }
-        } else if (!this.block) {
-            decrypted = true;
-        }
+        data = decryptPacket(this.block, data);
 
         const key = addrToString(rinfo);
-        if (decrypted && data.byteLength >= IKCP_OVERHEAD) {
+        if (data && data.byteLength >= IKCP_OVERHEAD) {
             let sess = this.sessions[key];
             let conv = 0;
             let sn = 0;
@@ -363,9 +373,11 @@ export class UDPSession extends EventEmitter {
             try {
                 // 2&3. crc32 & encryption
                 if (this.block) {
-                    crypto.randomFillSync(buff, 0, nonceSize);
-                    const checksum = crc32.buf(buff.slice(cryptHeaderSize)) >>> 0;
-                    buff.writeUInt32LE(checksum, nonceSize);
+                    if (usesLegacyCryptHeader(this.block)) {
+                        crypto.randomFillSync(buff, 0, nonceSize);
+                        const checksum = crc32.buf(buff.slice(cryptHeaderSize)) >>> 0;
+                        buff.writeUInt32LE(checksum, nonceSize);
+                    }
                     buff = this.block.encrypt(buff);
                 }
                 this.conn.send(buff, this.port, this.host, () => {
@@ -469,28 +481,9 @@ export class UDPSession extends EventEmitter {
         if (this.closed || !this.kcp) {
             return;
         }
-        let decrypted = false;
-        if (this.block && data.byteLength >= cryptHeaderSize) {
-            try {
-                // 解密
-                data = this.block.decrypt(data);
+        data = decryptPacket(this.block, data);
 
-                const checksum = crc32.buf(data.slice(cryptHeaderSize)) >>> 0;
-                if (checksum === data.readUInt32LE(nonceSize)) {
-                    data = data.slice(cryptHeaderSize);
-                    decrypted = true;
-                } else {
-                    // do nothing
-                    // crc32 检测未通过
-                }
-            } catch (err) {
-                return;
-            }
-        } else if (this.block == undefined) {
-            decrypted = true;
-        }
-
-        if (decrypted && data.byteLength >= IKCP_OVERHEAD) {
+        if (data && data.byteLength >= IKCP_OVERHEAD) {
             this.kcpInput(data);
         }
     }
@@ -591,7 +584,7 @@ function newUDPSession(args: {
     // FEC codec initialization
     if (dataShards && parityShards) {
         sess.fecDecoder = new FecDecoder(dataShards, parityShards);
-        if (sess.block) {
+        if (sess.block && usesLegacyCryptHeader(sess.block)) {
             sess.fecEncoder = new FecEncoder(dataShards, parityShards, cryptHeaderSize);
         } else {
             sess.fecEncoder = new FecEncoder(dataShards, parityShards, 0);
@@ -599,7 +592,7 @@ function newUDPSession(args: {
     }
 
     // calculate additional header size introduced by FEC and encryption
-    if (sess.block) {
+    if (sess.block && usesLegacyCryptHeader(sess.block)) {
         sess.headerSize += cryptHeaderSize;
     }
     if (sess.fecEncoder) {

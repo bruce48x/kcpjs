@@ -417,17 +417,26 @@ async function testKcpOutputBufferPoolWorksWithEncryption() {
     assert.strictEqual(session.write(Buffer.from('encrypted')), 9);
     assert.strictEqual(session.outputBufferPool.length, 1);
     assert.strictEqual(sent.length, 1);
+    const checksum = crc32.buf(sent[0].slice(cryptHeaderSize)) >>> 0;
+    assert.strictEqual(checksum, sent[0].readUInt32LE(nonceSize));
+    assert.strictEqual(sent[0].readUInt32LE(cryptHeaderSize), session.getConv());
 
     session.close();
 }
 
 async function testAesBlockRoundTripAndTamperFailure() {
-    const block = new AesBlock('aes-128-gcm', crypto.randomBytes(16), crypto.randomBytes(12));
+    const key = crypto.randomBytes(16);
+    const block = new AesBlock('aes-128-gcm', key, crypto.randomBytes(12));
+    const peer = new AesBlock('aes-128-gcm', key, crypto.randomBytes(12));
     const payload = Buffer.from('aes payload');
     const encrypted = block.encrypt(payload);
+    const secondEncrypted = block.encrypt(payload);
 
-    assert.strictEqual(encrypted.byteLength, payload.byteLength + block.authTagLength);
+    assert.strictEqual(encrypted.byteLength, payload.byteLength + block.nonceSize + block.authTagLength);
+    assert.notDeepStrictEqual(encrypted, secondEncrypted);
     assert(block.decrypt(encrypted).equals(payload));
+    assert(peer.decrypt(secondEncrypted).equals(payload));
+    assert.throws(() => block.decrypt(Buffer.alloc(block.nonceSize + block.authTagLength - 1)));
 
     encrypted[0] ^= 0xff;
     assert.throws(() => block.decrypt(encrypted));
@@ -450,14 +459,14 @@ async function testSessionOutputUsesRealAesBlock() {
         }
     };
 
+    assert.strictEqual(session.headerSize, 0);
     assert.strictEqual(session.write(Buffer.from('real aes')), 8);
     assert.strictEqual(session.outputBufferPool.length, 1);
     assert.strictEqual(sent.length, 1);
 
     const decrypted = block.decrypt(sent[0]);
-    const checksum = crc32.buf(decrypted.slice(cryptHeaderSize)) >>> 0;
-    assert.strictEqual(checksum, decrypted.readUInt32LE(nonceSize));
-    assert.strictEqual(decrypted.readUInt32LE(cryptHeaderSize), session.getConv());
+    assert.strictEqual(sent[0].byteLength, decrypted.byteLength + block.nonceSize + block.authTagLength);
+    assert.strictEqual(decrypted.readUInt32LE(0), session.getConv());
 
     session.close();
 }
@@ -495,6 +504,8 @@ async function testEncryptedFecRecoversDroppedDataShard() {
     });
 
     try {
+        assert.strictEqual(sender.headerSize, fecHeaderSize + 2);
+        assert.strictEqual(receiver.headerSize, fecHeaderSize + 2);
         for (let i = 0; i < 4; i++) {
             assert.strictEqual(sender.write(Buffer.from(`message-${i}`)), 9);
         }
@@ -513,7 +524,7 @@ async function testEncryptedFecRecoversDroppedDataShard() {
         });
 
         for (const packet of packets) {
-            const plain = block.decrypt(packet).slice(cryptHeaderSize);
+            const plain = block.decrypt(packet);
             const fecSeq = plain.readUInt32LE(0);
             if (fecSeq !== 1) {
                 receiver.packetInput(packet);
@@ -531,6 +542,28 @@ async function testEncryptedFecRecoversDroppedDataShard() {
         sender.close();
         receiver.close();
     }
+}
+
+async function testListenerAuthenticatesPerPacketAesNonce() {
+    const block = new AesBlock('aes-128-gcm', crypto.randomBytes(16));
+    const listener = ListenWithOptions({
+        port: 0,
+        block,
+        maxSessions: 1,
+        callback: () => {},
+    });
+    const rinfo = { address: '127.0.0.1', port: 13001 };
+    const encrypted = block.encrypt(makeKcpPushPacket(6001));
+    const tampered = Buffer.from(encrypted);
+    tampered[0] ^= 0xff;
+
+    listener.packetInput(tampered, rinfo);
+    assert.strictEqual(listener.sessionCount, 0);
+
+    listener.packetInput(encrypted, rinfo);
+    assert.strictEqual(listener.sessionCount, 1);
+
+    listener.close();
 }
 
 async function testSessionCloseClearsTimerSocketListenerAndKcp() {
@@ -600,6 +633,7 @@ async function main() {
     await testAesBlockRoundTripAndTamperFailure();
     await testSessionOutputUsesRealAesBlock();
     await testEncryptedFecRecoversDroppedDataShard();
+    await testListenerAuthenticatesPerPacketAesNonce();
     await testKcpWindowSizeIsClamped();
     await testKcpSendQueueIsStructurallyBounded();
     await testKcpSendQueueCompactionPreservesOrder();

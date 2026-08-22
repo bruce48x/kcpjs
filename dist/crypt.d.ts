@@ -4,13 +4,18 @@ import * as crypto from 'crypto';
 export interface CryptBlock {
     encrypt: (plainData: Buffer) => Buffer;
     decrypt: (encryptData: Buffer) => Buffer;
+    authenticated?: boolean;
 }
 export declare class AesBlock implements CryptBlock {
     private readonly algorithm;
     private readonly key;
-    private readonly iv;
     authTagLength: number;
-    constructor(algorithm: crypto.CipherGCMTypes, key: crypto.CipherKey, iv: crypto.BinaryLike);
+    readonly authenticated = true;
+    readonly nonceSize = 12;
+    private nextNonceValue;
+    private nonceExhausted;
+    constructor(algorithm: crypto.CipherGCMTypes, key: crypto.CipherKey, legacyIv?: crypto.BinaryLike);
+    private nextNonce;
     encrypt(data: Buffer): Buffer;
     decrypt(data: Buffer): Buffer;
 }
