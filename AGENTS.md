@@ -14,6 +14,6 @@ These instructions apply to the entire repository.
 
 - Releases are made only from the `main` branch.
 - For a normal release, change only the `version` field in `package.json`, run `npm test`, commit the version change, and push it to `main`.
-- Publish through the `Publish npm package` GitHub Actions workflow. Select the `main` branch when manually running the workflow.
+- Pushing to `main` automatically runs the `Publish npm package` GitHub Actions workflow. It publishes only when the version does not already exist on npm.
 - Do not run `npm publish` locally and do not add or use a long-lived `NPM_TOKEN` unless explicitly requested.
 - Confirm that the target version does not already exist on npm before creating the release commit.

@@ -1,10 +1,9 @@
 name: Publish npm package
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,7 +13,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: npm-publish-${{ github.ref }}
+  group: npm-publish-main
   cancel-in-progress: false
 
 jobs:
@@ -32,32 +31,28 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: yarn
 
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Test
-        run: yarn test
-
-      - name: Verify tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          package_version="$(node -p "require('./package.json').version")"
-          tag_version="${GITHUB_REF_NAME#v}"
-          if [ "$package_version" != "$tag_version" ]; then
-            echo "Tag version $tag_version does not match package.json version $package_version"
-            exit 1
-          fi
-
-      - name: Verify version is not published
+      - name: Check whether version needs publishing
+        id: release
         shell: bash
         run: |
           package_name="$(node -p "require('./package.json').name")"
           package_version="$(node -p "require('./package.json').version")"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
           if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
-            echo "$package_name@$package_version is already published"
-            exit 1
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "$package_name@$package_version is already published; skipping"
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install dependencies
+        if: steps.release.outputs.should_publish == 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Test
+        if: steps.release.outputs.should_publish == 'true'
+        run: yarn test
+
       - name: Publish
-        run: npm publish --access public
+        if: steps.release.outputs.should_publish == 'true'
+        run: npm publish --access public --provenance
